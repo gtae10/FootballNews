@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.0'
+    id 'io.spring.dependency-management' version '1.1.5'
+}
+
+group = 'com.liverpool'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = '17'
+}
+
+// Windows에서 프로젝트 경로에 non-ASCII 문자(예: OneDrive의 "바탕 화면")가 포함되면,
+// 테스트 실행 시 Gradle이 긴 테스트 클래스패스를 @argfile로 넘기는 과정에서 JDK 네이티브
+// 런처가 이를 UTF-8이 아닌 시스템 ANSI 코드페이지로 잘못 디코딩해 컴파일된 클래스를 찾지
+// 못하는 ClassNotFoundException이 발생한다. 빌드 출력만 ASCII 전용 임시 경로로 옮겨 회피한다.
+if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+    layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'liverpool-news-backend-build'))
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    runtimeOnly 'com.mysql:mysql-connector-j'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    // Windows에서 프로젝트 경로에 non-ASCII 문자가 포함된 경우, 테스트 워커 JVM이 클래스패스를
+    // 잘못 디코딩해 ClassNotFoundException이 발생하는 문제를 막기 위한 인코딩 강제 설정.
+    jvmArgs += ['-Dfile.encoding=UTF-8', '-Dsun.jnu.encoding=UTF-8']
+}

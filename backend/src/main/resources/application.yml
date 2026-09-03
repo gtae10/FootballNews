@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  config:
+    # 프로젝트 루트가 아닌 backend/ 안에 있는 .env를 프로퍼티 파일 형식으로 읽어들인다.
+    # 파일이 없어도(optional:) 실패하지 않고 아래 ${...:기본값}으로 폴백한다.
+    import: "optional:file:.env[.properties]"
+  application:
+    name: liverpool-news-backend
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/liverpool_news}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:password}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:unset-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:unset-google-client-secret}
+            scope: openid, email, profile
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+  jwt:
+    secret: ${JWT_SECRET:local-dev-only-secret-key-change-me-in-real-envs-32bytes+}
+    validity-minutes: ${JWT_VALIDITY_MINUTES:10080}

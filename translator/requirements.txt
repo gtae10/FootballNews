@@ -1,0 +1,8 @@
+anthropic==1.2.0
+# anthropic 1.x depends on httpx2 (not httpx). Pinned explicitly, not left as a
+# transitive dependency, to prevent a repeat of the past httpx/anthropic mismatch.
+httpx2==2.12.0
+sqlalchemy==2.0.30
+pymysql==1.1.1
+python-dotenv==1.0.1
+pytest==8.2.2

@@ -1,0 +1,27 @@
+# Java / Gradle
+backend/build/
+backend/.gradle/
+*.class
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+frontend-web/node_modules/
+frontend-web/dist/
+
+# 환경 변수
+.env
+*.env.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Claude Code 도구 설정 (프로젝트 코드 아님)
+.claude/
+skills-lock.json

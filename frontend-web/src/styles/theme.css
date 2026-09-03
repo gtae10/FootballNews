@@ -1,0 +1,424 @@
+/*
+ * RedFeed.dc.html(Claude Design 캔버스 시안)의 색상/타이포그래피/레이아웃을 참고해
+ * 기존 frontend-web React 컴포넌트에 이식한 전역 스타일. 원본은 프로젝트 루트 바깥
+ * 바탕화면의 RedFeed.dc.html에 참고용으로 남아 있다 (삭제하지 않음).
+ */
+
+:root {
+  --rf-bg: #08080a;
+  --rf-bg-raised: #0f0e0f;
+  --rf-bg-hover: #0d0c0d;
+  --rf-text: #f1efed;
+  --rf-text-dim: #d9d5d1;
+  --rf-red: #e04848;
+  --rf-red-hover: #f05555;
+  --rf-red-link: #f26161;
+  --rf-red-dim: #d84343;
+  --rf-muted-1: #8d8884;
+  --rf-muted-2: #7d7874;
+  --rf-muted-3: #6d6864;
+  --rf-muted-4: #5f5b58;
+  --rf-muted-5: #4f4b48;
+  --rf-muted-6: #3d3a38;
+  --rf-border: #221f1e;
+  --rf-border-soft: #1b1917;
+  --rf-border-faint: #171514;
+  --rf-border-faintest: #141312;
+  --rf-tier-1: #5fbf87;
+  --rf-tier-2: #8ab4e8;
+  --rf-tier-3: #e0c04a;
+  --rf-tier-4: #d98a4a;
+  --rf-tier-5: #a0736e;
+  --rf-danger: #c26a6a;
+  --rf-font-body: "Noto Sans KR", system-ui, sans-serif;
+  --rf-font-mono: "JetBrains Mono", monospace;
+}
+
+.rf-app {
+  min-height: 100vh;
+  background: var(--rf-bg);
+  color: var(--rf-text);
+  font-family: var(--rf-font-body);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px 120px;
+}
+
+.rf-app * {
+  box-sizing: border-box;
+}
+
+.rf-app a {
+  color: var(--rf-red-link);
+  text-decoration: none;
+}
+.rf-app a:hover {
+  color: #ff8a8a;
+}
+
+.rf-app input,
+.rf-app select,
+.rf-app textarea,
+.rf-app button {
+  font-family: inherit;
+}
+.rf-app input:focus,
+.rf-app select:focus,
+.rf-app textarea:focus {
+  outline: 1px solid #6b2b2b;
+}
+.rf-app ::placeholder {
+  color: var(--rf-muted-4);
+}
+
+@keyframes rf-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rf-page {
+  width: 100%;
+  max-width: 720px;
+  animation: rf-in 0.3s ease both;
+}
+
+.rf-wordmark {
+  font-family: var(--rf-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  color: var(--rf-red);
+}
+
+.rf-mono {
+  font-family: var(--rf-font-mono);
+}
+
+/* 버튼 */
+.rf-btn {
+  font-family: inherit;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid var(--rf-border);
+  background: none;
+  color: var(--rf-muted-1);
+  padding: 13px 18px;
+  font-size: 13.5px;
+}
+.rf-btn:hover {
+  border-color: var(--rf-muted-5);
+  color: var(--rf-text);
+}
+.rf-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rf-btn-primary {
+  flex: 1;
+  background: var(--rf-red);
+  border: none;
+  color: #fff;
+  border-radius: 2px;
+  padding: 15px 18px;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rf-btn-primary:hover {
+  background: var(--rf-red-hover);
+}
+.rf-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rf-btn-danger {
+  background: none;
+  border: 1px solid #3a2020;
+  color: var(--rf-danger);
+  border-radius: 2px;
+  padding: 11px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rf-btn-danger:hover {
+  border-color: var(--rf-red);
+  color: var(--rf-red-link);
+}
+
+/* 입력 */
+.rf-input {
+  width: 100%;
+  background: var(--rf-bg-raised);
+  border: 1px solid var(--rf-border);
+  border-radius: 2px;
+  color: var(--rf-text);
+  padding: 14px 16px;
+  font-size: 14px;
+}
+
+.rf-select {
+  background: var(--rf-bg-raised);
+  border: 1px solid var(--rf-border);
+  border-radius: 2px;
+  color: var(--rf-text);
+  padding: 12px;
+  font-size: 13.5px;
+}
+
+/* 구단 칩 */
+.rf-chip {
+  background: var(--rf-bg-raised);
+  border: 1px solid var(--rf-border);
+  color: #b8b4b0;
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rf-chip[data-selected="true"] {
+  background: var(--rf-red);
+  border-color: var(--rf-red);
+  color: #fff;
+}
+.rf-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rf-league-label {
+  font-family: var(--rf-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--rf-muted-3);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rf-border-soft);
+  margin-bottom: 14px;
+}
+
+/* 신뢰도 등급(tier) 행 */
+.rf-tier-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 4px;
+  border-top: 1px solid var(--rf-border-soft);
+  cursor: pointer;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  color: inherit;
+}
+.rf-tier-row[data-selected="true"] {
+  background: var(--rf-border-faintest);
+}
+.rf-tier-num {
+  font-family: var(--rf-font-mono);
+  font-size: 13px;
+  width: 28px;
+}
+.rf-tier-name {
+  font-size: 15px;
+  font-weight: 500;
+}
+.rf-tier-desc {
+  font-size: 12.5px;
+  color: var(--rf-muted-2);
+  padding-top: 4px;
+}
+
+/* 온보딩 진행 바 */
+.rf-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 28px;
+}
+.rf-progress-bar {
+  height: 2px;
+  flex: 1;
+  background: var(--rf-border);
+}
+.rf-progress-bar[data-active="true"] {
+  background: var(--rf-red);
+}
+.rf-progress-label {
+  font-family: var(--rf-font-mono);
+  font-size: 11px;
+  color: var(--rf-muted-3);
+  letter-spacing: 0.12em;
+}
+
+.rf-title-lg {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.rf-subtitle {
+  font-size: 14px;
+  color: var(--rf-muted-1);
+  padding-top: 8px;
+}
+
+/* 피드 헤더 */
+.rf-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 26px 0 22px;
+  border-bottom: 1px solid var(--rf-border-soft);
+}
+
+/* 오늘의 주요 소식 */
+.rf-top-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+.rf-top-dot {
+  width: 5px;
+  height: 5px;
+  background: var(--rf-red);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.rf-top-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--rf-border-faint);
+}
+.rf-top-item {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rf-border-faintest);
+  align-items: flex-start;
+}
+.rf-top-item:hover {
+  background: var(--rf-bg-hover);
+}
+.rf-top-rank {
+  font-family: var(--rf-font-mono);
+  font-size: 12px;
+  color: var(--rf-red);
+  padding-top: 2px;
+  width: 22px;
+}
+
+/* 기사 카드 */
+.rf-article-card {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rf-border-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.rf-article-card:hover {
+  background: #0c0b0c;
+}
+.rf-article-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--rf-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--rf-muted-3);
+  flex-wrap: wrap;
+}
+.rf-article-title {
+  font-size: 17.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+.rf-article-sub {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12.5px;
+  color: var(--rf-muted-2);
+}
+
+.rf-tier-tag {
+  font-family: var(--rf-font-mono);
+}
+
+.rf-detail-title {
+  font-size: 31px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+.rf-detail-body {
+  font-size: 16px;
+  line-height: 1.9;
+  color: var(--rf-text-dim);
+  padding: 28px 0;
+  white-space: pre-line;
+}
+
+.rf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--rf-muted-1);
+}
+
+.rf-section {
+  padding-top: 34px;
+}
+.rf-section-label {
+  font-family: var(--rf-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--rf-muted-3);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rf-border-soft);
+}
+
+.rf-row {
+  display: flex;
+  gap: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rf-border-faintest);
+  font-size: 14px;
+  align-items: center;
+}
+.rf-row-label {
+  width: 110px;
+  color: var(--rf-muted-2);
+}
+
+.rf-status {
+  font-size: 13px;
+  color: var(--rf-muted-3);
+}
+.rf-error {
+  font-size: 12px;
+  color: #e07070;
+  padding-top: 6px;
+}
+.rf-toast {
+  font-size: 13px;
+  color: var(--rf-muted-2);
+}

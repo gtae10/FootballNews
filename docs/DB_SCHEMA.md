@@ -1,0 +1,129 @@
+# DB 스키마 (초안)
+
+## articles
+
+원문 기사 정보
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 기사 ID |
+| source | VARCHAR | 출처 매체명 |
+| original_url | VARCHAR (UNIQUE) | 원문 URL |
+| title_original | TEXT | 원문 제목 |
+| content_original | TEXT | 원문 본문 |
+| published_at | TIMESTAMP | 원문 발행일 |
+| collected_at | TIMESTAMP | 수집 시각 |
+| status | VARCHAR | COLLECTED / TRANSLATED / PUBLISHED |
+| source_tier | INT (nullable) | 소스 신뢰도 등급 (1이 가장 신뢰도 높음, "오늘의 주요 소식" 정렬에 사용). `article_clubs`에 태깅된 구단이 없거나 매체 자체 등급이 있어도, 신뢰도 높은 기자/계정이 인용된 것으로 감지되면(quoted_reporter) 더 낮은(신뢰도 높은) 값으로 갱신될 수 있다 (collector/reporter_detector.py 참고) |
+| quoted_reporter | VARCHAR (nullable) | 본문에 인용된 것으로 감지된 유명 기자/계정 이름 (collector/trusted_reporters.py에 등록된 이름 중 하나). 감지되지 않으면 NULL |
+
+기사가 어떤 구단을 다루는지는 `club` 단일 컬럼이 아니라 아래 `article_clubs` 조인 테이블에 다중 값으로 저장한다
+(이적 기사처럼 한 기사가 여러 구단을 언급하는 경우가 흔하기 때문). 어떤 구단도 감지되지 않은 기사(리그 전반 이슈 등)는
+`article_clubs`에 row 없이 저장될 수 있다.
+
+## article_clubs
+
+기사 ↔ 구단 다대다 태깅 (기사 본문에서 자동 감지된 구단, collector/club_matcher.py 참고)
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| article_id | BIGINT (FK -> articles.id) | 태깅된 기사 |
+| club_name | VARCHAR | 구단명 (`GET /clubs`가 반환하는 `clubs.name`과 동일한 표기) |
+
+`(article_id, club_name)` 복합 기본키로 관리한다 (같은 기사에 같은 구단이 중복 태깅되지 않는다).
+
+## translations
+
+번역 결과 (기사와 1:1)
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 번역 ID |
+| article_id | BIGINT (FK -> articles.id) | 연결된 기사 |
+| title_ko | TEXT | 번역된 제목 |
+| content_ko | TEXT | 번역/요약된 본문 |
+| model_version | VARCHAR | 사용한 LLM 모델 버전 |
+| translated_at | TIMESTAMP | 번역 시각 |
+
+## users
+
+Google OAuth 로그인 사용자
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 사용자 ID |
+| email | VARCHAR (UNIQUE) | 구글 계정 이메일 |
+| nickname | VARCHAR (nullable) | 닉네임, 미설정 시 이메일로 표시 |
+| created_at | TIMESTAMP | 가입 시각 |
+
+## clubs
+
+온보딩/설정에서 선택 가능한 구단 목록 (5대 리그 주요 구단 시드 데이터)
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 구단 ID |
+| name | VARCHAR | 구단명 |
+| league | VARCHAR | EPL / LA_LIGA / BUNDESLIGA / SERIE_A / LIGUE_1 |
+
+## user_preferences
+
+사용자별 온보딩 설정 (1:1 users)
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | ID |
+| user_id | BIGINT (FK -> users.id, UNIQUE) | 사용자 |
+| notification_trust_level | INT | 알림 신뢰도 1(공식 소스만) ~ 5(모든 소스) |
+
+`user_preference_clubs` 조인 테이블로 `user_preferences` ↔ `clubs` 다대다 관계를 관리한다
+(사용자의 온보딩 완료 여부는 이 테이블에 row가 있는지로 판단한다).
+
+## reporter_suggestions
+
+사용자가 제보한, 아직 수집되지 않은 기자 정보
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 제보 ID |
+| user_id | BIGINT (FK -> users.id) | 제보한 사용자 |
+| twitter_handle | VARCHAR | 기자의 트위터(X) 핸들 (필수) |
+| name | VARCHAR (nullable) | 기자 이름 (선택) |
+| league | VARCHAR (nullable) | 주로 다루는 리그, `clubs.league`와 동일한 값 (선택) |
+| memo | TEXT (nullable) | 추가 메모 (선택) |
+| created_at | TIMESTAMP | 제보 시각 |
+
+계정 탈퇴 시 해당 사용자의 제보는 함께 삭제된다.
+
+## 인덱스 제안
+
+- `articles.original_url` UNIQUE 인덱스 (중복 수집 방지)
+- `articles.published_at` 인덱스 (최신순 정렬/필터)
+- `article_clubs.club_name` 인덱스 (구단별 필터 조회)
+- `translations.article_id` 인덱스 (조인 성능)
+- `users.email` UNIQUE 인덱스 (구글 계정당 1 row)
+- `reporter_suggestions.user_id` 인덱스 (내 제보 목록 조회)
+
+## 마이그레이션 메모 (club 단일 컬럼 → article_clubs)
+
+기존에는 `articles.club` VARCHAR 단일 컬럼에 리버풀 한 구단만 저장했다. 다중 구단 태깅 도입 후:
+
+1. 백엔드 재기동 시 `ddl-auto: update`가 `article_clubs` 테이블과 `articles.quoted_reporter` 컬럼을 자동 생성한다
+   (기존 `articles.club` 컬럼은 자동으로 삭제되지 않는다).
+2. 기존 데이터(리버풀 150건 등)를 새 구조로 옮기려면 아래 SQL을 한 번 실행한다.
+   ```sql
+   INSERT INTO article_clubs (article_id, club_name)
+   SELECT id, club FROM articles WHERE club IS NOT NULL AND club <> '';
+   ```
+3. 위 마이그레이션과 애플리케이션 배포(신규 컬렉터/백엔드 코드) 확인이 끝나면 안 쓰는 컬럼을 정리한다.
+   ```sql
+   ALTER TABLE articles DROP COLUMN club;
+   ```
+
+**실제로는 위 SQL 대신 `collector/retag_articles.py`를 실행해 마이그레이션했다** (2026-09). 그 시점에
+이미 `articles.club` 컬럼 자체가 존재하지 않는 상태였고(레거시 단일 컬럼 스키마가 실제 DB에 반영된
+적이 없었음), club_matcher.py의 본문 기반 구단 감지 + sources.py의 forced_club 규칙을 그대로 재사용해
+기존 150건을 재태깅하는 편이 더 정확했다. 같은 이유로 `articles.quoted_reporter`(기자 인용 감지) 도입
+후에도 기존 데이터에는 소급 반영되지 않았는데, 이는 `collector/retag_reporters.py`로 채웠다. 두
+스크립트 모두 이미 태그/감지된 기사는 건드리지 않아 여러 번 실행해도 안전하다 — 사용법은
+`collector/README.md`의 "소급 재태깅" 절 참고.

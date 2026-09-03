@@ -1,0 +1,142 @@
+from datetime import datetime
+from unittest.mock import patch
+
+from sqlalchemy import create_engine, text
+
+from db import save_articles
+from rss_collector import CollectedArticle
+
+
+def _make_engine():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE articles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source TEXT,
+                    original_url TEXT UNIQUE,
+                    title_original TEXT,
+                    content_original TEXT,
+                    published_at TEXT,
+                    collected_at TEXT,
+                    status TEXT,
+                    source_tier INTEGER,
+                    quoted_reporter TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE article_clubs (
+                    article_id INTEGER,
+                    club_name TEXT,
+                    PRIMARY KEY (article_id, club_name)
+                )
+                """
+            )
+        )
+    return engine
+
+
+# save_articles()는 매번 GET /clubs를 호출해 별칭 맵을 만드는데, 이 파일의 테스트는 DB
+# 저장 로직만 검증하면 되므로 club_matcher._load_alias_map을 고정 값으로 대체해 네트워크
+# 호출 없이 결정적으로 동작하게 한다. 감지 로직 자체(별칭 매칭)는 test_club_matcher.py에서 검증한다.
+_ALIAS_MAP = {"Liverpool": ["Liverpool"], "Arsenal": ["Arsenal"]}
+
+
+def _club_names(connection, article_id):
+    rows = connection.execute(
+        text("SELECT club_name FROM article_clubs WHERE article_id = :id ORDER BY club_name"),
+        {"id": article_id},
+    ).all()
+    return [row.club_name for row in rows]
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_inserts_new_article_with_forced_club_and_tier(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="The Anfield Wrap",
+        original_url="https://theanfieldwrap.com/article/1",
+        title_original="Test Title",
+        content_original="Test Summary",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=2,
+    )
+
+    saved_count = save_articles(engine, [article])
+
+    assert saved_count == 1
+    with engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT id, source, source_tier, status FROM articles")
+        ).one()
+        assert row.source == "The Anfield Wrap"
+        assert row.source_tier == 2
+        assert row.status == "COLLECTED"
+        assert _club_names(connection, row.id) == ["Liverpool"]
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_detects_multiple_clubs_from_content(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/1",
+        title_original="Liverpool reignite interest in Arsenal target",
+        content_original="Liverpool and Arsenal are both chasing the same midfielder.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT id FROM articles")).one()
+        assert _club_names(connection, row.id) == ["Arsenal", "Liverpool"]
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_leaves_article_unclubbed_when_nothing_detected(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/2",
+        title_original="Premier League announces new broadcast deal",
+        content_original="The league-wide announcement does not mention any specific club.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT id FROM articles")).one()
+        assert _club_names(connection, row.id) == []
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_skips_duplicate_original_url(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Empire of The Kop",
+        original_url="https://www.empireofthekop.com/article/1",
+        title_original="Title",
+        content_original="Summary",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=3,
+    )
+
+    first_saved = save_articles(engine, [article])
+    second_saved = save_articles(engine, [article])
+
+    assert first_saved == 1
+    assert second_saved == 0
