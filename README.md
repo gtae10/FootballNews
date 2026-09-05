@@ -25,9 +25,13 @@ FootballNews/
 - **이적 루머 타임라인**: 같은 (선수, 구단) 건으로 기사를 자동 클러스터링하고, 48시간 이내
   서로 다른 매체가 몇 곳이나 독립 보도했는지 계산해 교차보도 배지를 표시. 규칙 기반이며
   LLM을 쓰지 않는다(정확도 트레이드오프는 `collector/player_extractor.py` 상단 주석 참고).
-- **번역 파이프라인** (`translator/`): Claude API로 기사를 요약 번역하는 배관은 구현·검증
-  완료. 실제 사용하려면 `translator/.env`에 유효한 `ANTHROPIC_API_KEY`를 설정해야 한다
-  (현재 플레이스홀더 상태라 번역은 아직 실행된 적이 없다).
+- **번역 파이프라인** (`translator/`): 기본 엔진은 **Argos Translate**(오픈소스, 오프라인,
+  무료 — 카드 등록이 필요한 파파고/구글/DeepL 대신 도입). 최초 1회
+  `python setup_argos_model.py`로 en→ko 모델(약 130MB)만 받으면 이후 완전히
+  오프라인으로 동작한다. Claude(Anthropic API) 엔진도 코드가 보존돼 있어
+  `translate.py`의 `ENGINE` 설정만 바꾸면 다시 쓸 수 있다. 문장 단위 직역이라
+  Claude 기반 요약 번역보다 품질이 낮을 수 있다는 점은 감안해야 한다
+  (`translator/README.md`의 품질 평가 참고).
 - **API 서버** (`backend/`): 기사 목록/검색/상세, 구단 목록, 루머 스레드, Google OAuth
   로그인, 온보딩/관심 구단/알림 설정, 기자 제보 API 제공. 상세 스펙은 [API.md](docs/API.md).
 - **웹 클라이언트** (`frontend-web/`): 피드/검색/기사 상세/설정/온보딩 화면. Google OAuth
@@ -56,9 +60,10 @@ FootballNews/
    python backfill.py        # 과거 기사 백필 (선택, 신규 소스 추가 시 등)
    python build_rumor_threads.py  # 루머 스레드 소급 클러스터링 (선택)
    ```
-4. **translator 실행** (선택) — `ANTHROPIC_API_KEY` 필요.
+4. **translator 실행** (선택) — 최초 1회만 번역 모델을 받아야 한다.
    ```bash
    cd translator && pip install -r requirements.txt --break-system-packages
+   python setup_argos_model.py   # 최초 1회만, en->ko 모델(약 130MB) 다운로드
    python translate.py
    ```
 5. **frontend-web 실행**
@@ -77,6 +82,6 @@ FootballNews/
 ## 다음 단계
 
 - 실제 Google OAuth 자격증명 발급 및 연동 확인
-- `ANTHROPIC_API_KEY` 연동 후 번역 파이프라인 실사용 확인
+- 번역 품질이 더 중요해지면 상용 API(Claude 등)로 엔진 교체 검토
 - 실서비스 전 게스트 모드 노출 여부 검토
 - 모바일 클라이언트 착수

@@ -1,6 +1,13 @@
+argostranslate==1.11.0
+# 오프라인/무료 기본 번역 엔진(argos_engine.py). 카드 등록이 필요한 상용 API의
+# 대안으로 도입했다 — 실제 번역 전 `python setup_argos_model.py`로 en->ko 모델을
+# 한 번 내려받아야 한다 (translator/README.md 참고).
+
 anthropic==1.2.0
 # anthropic 1.x depends on httpx2 (not httpx). Pinned explicitly, not left as a
 # transitive dependency, to prevent a repeat of the past httpx/anthropic mismatch.
+# 현재 기본 엔진이 아니지만(anthropic_engine.py, translate.py의 ENGINE 참고)
+# 나중에 다시 켤 수 있도록 의존성은 유지한다.
 httpx2==2.12.0
 sqlalchemy==2.0.30
 pymysql==1.1.1

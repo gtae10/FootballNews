@@ -48,10 +48,22 @@
 - 관계형 DB(PostgreSQL 또는 MySQL) 사용
 - 상세 스키마는 [DB_SCHEMA.md](DB_SCHEMA.md) 참고
 
-### 4. LLM 번역 파이프라인 (`translator/`)
-- 신규/미번역 기사를 감지해 LLM API로 번역
-- 축구 용어 일관성을 위한 용어집(glossary) 적용
-- 이미 번역된 기사는 캐싱하여 재호출 방지
+### 4. 번역 파이프라인 (`translator/`)
+- 신규/미번역 기사를 감지해 번역한다. 기본 엔진은 **Argos Translate**(오픈소스,
+  오프라인, 무료) — 파파고/구글/DeepL 등 상용 API는 전부 카드 등록이 필요해
+  카드 등록 없이 바로 쓸 수 있는 대안으로 도입했다(`translator/argos_engine.py`).
+  Claude(Anthropic API) 기반 엔진도 `translator/anthropic_engine.py`에 그대로
+  보존돼 있어, 번역 품질이 더 중요해지면 `translate.py`의 `ENGINE` 상수만 바꿔
+  다시 켤 수 있다.
+- 번역 직전에 RSS 원문의 HTML 태그/엔티티와 워드프레스 특유의 피드 푸터를
+  제거한다(`html_cleanup.py`) — 그대로 두면 NMT가 링크 URL까지 훼손하는 문제가
+  있었다.
+- 축구 용어 일관성을 위한 용어집(glossary)을 적용한다. Claude처럼 프롬프트를
+  지원하는 엔진에는 프롬프트에 포함시키고, Argos Translate처럼 프롬프트 개념이
+  없는 엔진에는 번역 후 결과 텍스트에 후처리로 치환한다.
+- 이미 번역된 기사는 `status`로 구분해 재호출하지 않는다.
+- Argos Translate는 문장 단위 직역에 가까워 Claude 기반 요약 번역보다 품질이
+  낮을 수 있다는 트레이드오프가 있다(상세: `translator/README.md`).
 
 ### 5. API 서버 (`backend/`)
 - Spring Boot 기반 REST API
@@ -67,7 +79,7 @@
 | 영역 | 기술 |
 |---|---|
 | 수집기 | Python (requests, BeautifulSoup, feedparser) |
-| 번역 | LLM API (Claude/GPT) |
+| 번역 | Argos Translate (기본, 오프라인/무료) — Claude API로 교체 가능 |
 | 백엔드 | Spring Boot, JPA |
 | DB | PostgreSQL / MySQL |
 | 웹 프론트엔드 | React |

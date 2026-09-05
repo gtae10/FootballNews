@@ -1,19 +1,17 @@
 """번역 파이프라인 전체 배관(plumbing)이 실제로 연결돼 있는지 확인하는 테스트.
 
-test_translate.py의 run_translation_batch 테스트는 db 모듈 전체를 mock으로 대체해
-호출 인자만 검증하지만, 이 파일은 db.fetch_untranslated_articles / db.save_translation을
-실제로 실행해(SQLite in-memory) status 필터링, translations 저장, status 갱신,
-시스템 프롬프트에 용어집이 실제로 포함되는지까지 end-to-end로 검증한다.
-Anthropic 클라이언트 호출만 MagicMock으로 대체하며, 실제 네트워크 요청은 발생하지 않는다.
+test_translate.py는 db 모듈 전체를 mock으로 대체해 호출 인자만 검증하지만, 이
+파일은 db.fetch_untranslated_articles / db.save_translation을 실제로 실행해
+(SQLite in-memory) status 필터링, translations 저장, status 갱신, 용어집
+후처리까지 end-to-end로 검증한다. Argos Translate 호출만 mock으로 대체하며
+(모델 다운로드나 실제 NMT 추론 없이), 실제 네트워크 요청은 발생하지 않는다.
 """
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from sqlalchemy import create_engine, text
 
 import translate
-from glossary import FOOTBALL_GLOSSARY
 
 
 def _make_engine():
@@ -48,26 +46,6 @@ def _make_engine():
     return engine
 
 
-def _mock_response(payload: dict):
-    text_block = MagicMock()
-    text_block.type = "text"
-    text_block.text = json.dumps(payload, ensure_ascii=False)
-    response = MagicMock()
-    response.content = [text_block]
-    return response
-
-
-def _make_mock_client(captured_calls):
-    client = MagicMock()
-
-    def _create(**kwargs):
-        captured_calls.append(kwargs)
-        return _mock_response({"title_ko": "MOCK 제목", "content_ko": "MOCK 요약"})
-
-    client.messages.create.side_effect = _create
-    return client
-
-
 def test_run_translation_batch_only_translates_collected_articles():
     engine = _make_engine()
     with engine.begin() as connection:
@@ -90,15 +68,12 @@ def test_run_translation_batch_only_translates_collected_articles():
             )
         )
 
-    captured_calls = []
     with patch("translate.db.get_engine", return_value=engine), \
-         patch("translate._get_client", return_value=_make_mock_client(captured_calls)), \
-         patch("translate.anthropic.Anthropic") as mock_anthropic_ctor:
+         patch("argos_engine.translate", return_value=("MOCK 제목", "MOCK 요약", "argos-translate-en-ko")) as mock_translate:
         translated_count = translate.run_translation_batch()
 
     assert translated_count == 2
-    mock_anthropic_ctor.assert_not_called()  # 실제 Anthropic 클라이언트는 생성조차 되지 않는다.
-    assert len(captured_calls) == 2  # 이미 TRANSLATED인 기사는 호출 대상에서 제외됨.
+    assert mock_translate.call_count == 2  # 이미 TRANSLATED인 기사는 호출 대상에서 제외됨.
 
     with engine.connect() as connection:
         statuses = connection.execute(
@@ -113,10 +88,10 @@ def test_run_translation_batch_only_translates_collected_articles():
     for row in translation_rows:
         assert row.title_ko == "MOCK 제목"
         assert row.content_ko == "MOCK 요약"
-        assert row.model_version == translate.MODEL
+        assert row.model_version == "argos-translate-en-ko"
 
 
-def test_run_translation_batch_sends_glossary_in_system_prompt():
+def test_run_translation_batch_applies_glossary_to_saved_translation():
     engine = _make_engine()
     with engine.begin() as connection:
         connection.execute(
@@ -126,16 +101,15 @@ def test_run_translation_batch_sends_glossary_in_system_prompt():
             )
         )
 
-    captured_calls = []
     with patch("translate.db.get_engine", return_value=engine), \
-         patch("translate._get_client", return_value=_make_mock_client(captured_calls)):
+         patch("argos_engine.translate", return_value=("제목", "We kept a clean sheet today", "argos-translate-en-ko")):
         translate.run_translation_batch()
 
-    assert len(captured_calls) == 1
-    system_prompt = captured_calls[0]["system"]
-    for en, ko in FOOTBALL_GLOSSARY.items():
-        assert en in system_prompt
-        assert ko in system_prompt
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT content_ko FROM translations")).one()
+
+    assert "무실점" in row.content_ko
+    assert "clean sheet" not in row.content_ko.lower()
 
 
 def test_run_translation_batch_does_not_reprocess_already_translated_articles():
@@ -148,15 +122,11 @@ def test_run_translation_batch_does_not_reprocess_already_translated_articles():
             )
         )
 
-    captured_calls = []
     with patch("translate.db.get_engine", return_value=engine), \
-         patch("translate._get_client", return_value=_make_mock_client(captured_calls)):
+         patch("argos_engine.translate", return_value=("MOCK", "MOCK", "argos-translate-en-ko")) as mock_translate:
         first_run_count = translate.run_translation_batch()
-
-    with patch("translate.db.get_engine", return_value=engine), \
-         patch("translate._get_client", return_value=_make_mock_client(captured_calls)):
         second_run_count = translate.run_translation_batch()
 
     assert first_run_count == 1
     assert second_run_count == 0  # status가 TRANSLATED로 바뀌었으므로 재조회 대상에서 제외.
-    assert len(captured_calls) == 1  # 두 번째 실행에서는 클라이언트가 호출되지 않음.
+    assert mock_translate.call_count == 1  # 두 번째 실행에서는 엔진이 호출되지 않음.
