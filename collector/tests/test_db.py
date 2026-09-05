@@ -39,6 +39,34 @@ def _make_engine():
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE rumor_threads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    player_name TEXT,
+                    club_name TEXT,
+                    latest_stage TEXT,
+                    independent_source_count INTEGER,
+                    cross_reported INTEGER,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE rumor_thread_articles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rumor_thread_id INTEGER,
+                    article_id INTEGER,
+                    story_stage TEXT
+                )
+                """
+            )
+        )
     return engine
 
 
@@ -140,3 +168,74 @@ def test_save_articles_skips_duplicate_original_url(mock_alias_map):
 
     assert first_saved == 1
     assert second_saved == 0
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_creates_rumor_thread_when_player_name_and_club_detected(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="The Anfield Wrap",
+        original_url="https://theanfieldwrap.com/article/isak",
+        title_original="Liverpool make contact over Alexander Isak",
+        content_original="Liverpool are keen on a deal for the striker.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=2,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        thread = connection.execute(
+            text("SELECT player_name, club_name, latest_stage FROM rumor_threads")
+        ).one()
+        assert thread.player_name == "Alexander Isak"
+        assert thread.club_name == "Liverpool"
+        assert thread.latest_stage == "INTEREST"
+
+        link = connection.execute(text("SELECT article_id FROM rumor_thread_articles")).one()
+        article_id = connection.execute(text("SELECT id FROM articles")).one().id
+        assert link.article_id == article_id
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_does_not_create_rumor_thread_when_story_stage_is_unknown(mock_alias_map):
+    """이적 관련 키워드가 전혀 없는 기사(예: 경기 리포트)는 선수명+구단이 함께 언급돼도
+    루머 스레드로 묶이지 않는다 — 그렇지 않으면 이적과 무관한 기사가 "교차검증"으로
+    오인될 수 있다."""
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/isak-brace",
+        title_original="Isak nets double as Liverpool win",
+        content_original="A dominant performance saw the striker score twice.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=1,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        count = connection.execute(text("SELECT COUNT(*) AS cnt FROM rumor_threads")).one()
+        assert count.cnt == 0
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_does_not_create_rumor_thread_when_no_club_detected(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/isak-league",
+        title_original="Alexander Isak wins Premier League player of the month",
+        content_original="A league-wide award with no specific club angle.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        count = connection.execute(text("SELECT COUNT(*) AS cnt FROM rumor_threads")).one()
+        assert count.cnt == 0

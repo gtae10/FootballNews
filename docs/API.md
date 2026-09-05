@@ -153,6 +153,86 @@ GET /clubs
 ]
 ```
 
+## 루머 스레드 타임라인
+
+같은 이적 건(선수 + 구단)으로 묶인 기사들의 타임라인. 규칙 기반 클러스터링 결과이며
+(LLM 미사용), 선수명은 제목에서 정규식으로 추출한 후보라 완벽하지 않을 수 있다
+(`docs/DB_SCHEMA.md`의 `rumor_threads` 절 참고).
+
+```
+GET /rumor-threads
+```
+
+쿼리 파라미터
+- `sort`: `independent`(기본값) — `independentSourceCount` 내림차순, 동률이면 최근 갱신순.
+  `latest` — 최근 갱신순만.
+
+인증 불필요.
+
+응답 예시
+```json
+[
+  {
+    "id": 793,
+    "playerName": "Lamine Camara",
+    "clubName": "Chelsea",
+    "latestStage": "NEGOTIATION",
+    "independentSourceCount": 2,
+    "crossReported": true,
+    "articleCount": 2,
+    "createdAt": "2026-09-05T08:12:19.978472",
+    "updatedAt": "2026-09-05T08:12:20.103558"
+  }
+]
+```
+
+`latestStage`는 스레드에 포함된 기사들 중 가장 진전된 단계다: `UNKNOWN` < `INTEREST` <
+`NEGOTIATION` < `CONFIRMED` < `OFFICIAL`.
+
+**`independentSourceCount`/`crossReported`에 대한 중요한 주의**: 이 값은 스레드 최초
+기사 발행 후 48시간 이내에 서로 다른 매체(`source`)가 몇 곳이나 같은 건을 독립적으로
+보도했는지를 뜻한다. **"여러 매체가 같은 이야기를 하고 있다"는 뜻이지, "이적이 사실로
+확인됐다"는 뜻이 아니다.** `verified_source_count`처럼 "검증됨"으로 오해할 수 있는
+이름 대신 `independent`/`cross_reported`를 의도적으로 사용했다 — 오보를 여러 매체가
+동시에 베껴 쓴 경우도 이 값이 높게 나올 수 있다.
+
+## 루머 스레드 상세 (타임라인)
+
+```
+GET /rumor-threads/{id}
+```
+
+인증 불필요. 소속 기사를 발행 시각 오름차순으로 포함한다 — "8/28 최초 보도 → 8/30
+확인 → 9/1 공식 발표" 같은 타임라인을 그대로 재구성할 수 있다.
+
+응답 예시
+```json
+{
+  "id": 793,
+  "playerName": "Lamine Camara",
+  "clubName": "Chelsea",
+  "latestStage": "NEGOTIATION",
+  "independentSourceCount": 2,
+  "crossReported": true,
+  "createdAt": "2026-09-05T08:12:19.978472",
+  "updatedAt": "2026-09-05T08:12:20.103558",
+  "articles": [
+    {
+      "id": 240,
+      "source": "Empire of The Kop",
+      "titleKo": null,
+      "titleOriginal": "Liverpool may be encouraged by what Monaco chief told Lamine Camara after deadline day drama",
+      "originalUrl": "https://www.empireofthekop.com/...",
+      "publishedAt": "2026-09-02T15:01:42",
+      "storyStage": "NEGOTIATION"
+    }
+  ]
+}
+```
+
+`articles[].titleKo`는 해당 기사가 아직 번역되지 않았으면 `null`이다 (그 경우
+`titleOriginal`을 사용). 존재하지 않는 스레드 id를 조회하면 404를 반환한다.
+
 ## 온보딩 / 관심 구단 설정
 
 ```

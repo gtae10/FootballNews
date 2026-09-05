@@ -67,6 +67,19 @@ python retag_reporters.py  # quoted_reporter가 비어 있는 기사에 기자 �
 신규 소스를 추가하거나 `trusted_reporters.py`에 기자를 추가한 직후처럼, 기존
 데이터에도 새 규칙을 반영하고 싶을 때 실행한다.
 
+### 루머 스레드 소급 클러스터링
+
+```bash
+python build_rumor_threads.py  # rumor_thread_articles에 연결이 없는 기사를 발행일순으로 클러스터링
+```
+
+`save_articles()`(db.py)는 신규로 저장되는 기사에만 루머 스레드 클러스터링을
+적용한다(`rumor_clusterer.py`). 이 스크립트 도입 전 저장된 기사에 소급 적용할 때
+실행한다. 이미 스레드에 연결된 기사는 건드리지 않으므로 여러 번 실행해도
+안전하다(idempotent). 실행 전 backend를 한 번 띄워 `rumor_threads`/
+`rumor_thread_articles` 테이블이 생성된 상태여야 하고(`ddl-auto=update`),
+`GET /clubs` 호출이 가능해야 한다(구단 별칭을 선수명 후보 제외 목록에 포함하기 위해).
+
 ## 파일 구성
 
 - `sources.py`: 수집 대상 소스 목록 (RSS URL, 크롤링 대상 사이트). 등록된 소스와
@@ -88,4 +101,11 @@ python retag_reporters.py  # quoted_reporter가 비어 있는 기사에 기자 �
   적용하는 1회성 배치 (신규 저장 시에만 적용되는 구단 태깅의 공백을 메운다)
 - `retag_reporters.py`: quoted_reporter가 비어 있는 기존 기사에 기자 인용 감지를
   소급 적용하는 1회성 배치 (신규 저장 시에만 적용되는 인용 감지의 공백을 메운다)
+- `player_extractor.py`: 제목에서 대문자로 시작하는 연속 단어를 선수명 후보로 추출하는
+  규칙 기반 로직 (구단명/기자명/대회명/스톱워드 제외). 완벽한 개체명 인식이 아니므로
+  오탐/누락 트레이드오프가 있다 — 파일 상단 주석 참고
+- `rumor_clusterer.py`: (선수명, 구단) 조합으로 기사를 루머 스레드로 묶고, 본문 키워드로
+  스토리 단계(INTEREST~OFFICIAL)를 판정하고, 48시간 이내 서로 다른 소스 수로 교차보도
+  여부(cross_reported)를 계산하는 로직
+- `build_rumor_threads.py`: 기존 기사에 루머 스레드 클러스터링을 소급 적용하는 1회성 배치
 - `tests/`: 단위/통합 테스트 (외부 네트워크 호출 없이 mock 또는 in-memory DB 사용)

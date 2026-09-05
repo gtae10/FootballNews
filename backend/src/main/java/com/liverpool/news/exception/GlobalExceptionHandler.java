@@ -16,7 +16,7 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler({ArticleNotFoundException.class, UserNotFoundException.class})
+    @ExceptionHandler({ArticleNotFoundException.class, UserNotFoundException.class, RumorThreadNotFoundException.class})
     public ResponseEntity<ErrorResponse> handleNotFound(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }

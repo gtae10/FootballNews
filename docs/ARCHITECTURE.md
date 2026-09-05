@@ -39,6 +39,10 @@
 - 본문에 유명 기자/계정(`collector/trusted_reporters.py`)이 인용된 것으로 감지되면
   (`collector/reporter_detector.py`), 해당 기사의 소스 신뢰도 등급(`source_tier`)을 더
   신뢰도 높은 값으로 갱신한다
+- 제목에서 선수명 후보를 규칙 기반으로 추출하고(`collector/player_extractor.py`), 본문에
+  이적 관련 키워드가 있으면(`collector/rumor_clusterer.py`) 같은 (선수, 구단) 건을
+  루머 스레드로 묶는다. 스레드/교차검증 로직 상세는 [DB_SCHEMA.md](DB_SCHEMA.md#rumor_threads)와
+  [API.md](API.md#루머-스레드-타임라인) 참고
 
 ### 3. 원문 저장소
 - 관계형 DB(PostgreSQL 또는 MySQL) 사용

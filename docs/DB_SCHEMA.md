@@ -32,6 +32,41 @@
 
 `(article_id, club_name)` 복합 기본키로 관리한다 (같은 기사에 같은 구단이 중복 태깅되지 않는다).
 
+## rumor_threads
+
+같은 이적 건(선수 + 구단)으로 묶인 기사들의 스레드. `collector/rumor_clusterer.py`가
+채우고 갱신하며, 백엔드는 읽기 전용으로 `GET /rumor-threads`에 노출한다
+(`docs/API.md` 참고). 선수명은 정규식 기반 후보 추출(`collector/player_extractor.py`)
+결과이므로 완벽하지 않을 수 있다 — 오탐/누락 트레이드오프는 해당 파일 상단 주석 참고.
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 스레드 ID |
+| player_name | VARCHAR | 대표 선수명 후보 (제목에서 추출된 원문 그대로, 정규화되지 않음) |
+| club_name | VARCHAR | 연결된 구단명 (`clubs.name`과 동일 표기). 같은 선수라도 구단이 다르면 별도 이적 건으로 보아 스레드도 분리된다 (예: "Isak → Liverpool"과 "Isak → Arsenal"은 다른 스레드) |
+| latest_stage | VARCHAR | 스레드에 포함된 기사들 중 가장 진전된 스토리 단계. `UNKNOWN` / `INTEREST` / `NEGOTIATION` / `CONFIRMED` / `OFFICIAL` (이 순서가 진전도 순서) |
+| independent_source_count | INT | 스레드 최초 기사 발행 시각으로부터 48시간 이내에 보도한, 서로 다른 `source`(매체)의 수. **"여러 매체가 독립적으로 같은 이야기를 보도했다"는 뜻일 뿐 "이적이 사실로 확인됐다"는 뜻이 아니다** — 의도적으로 `verified_*`가 아닌 이 이름을 썼다 |
+| cross_reported | BOOLEAN | `independent_source_count >= 2`일 때 `true`. 같은 매체가 같은 얘기를 여러 번 써도 소스 1개로만 카운트된다 |
+| created_at | DATETIME | 스레드 생성 시각 |
+| updated_at | DATETIME | 마지막으로 기사가 합류하거나 단계가 갱신된 시각 |
+
+## rumor_thread_articles
+
+루머 스레드 ↔ 기사 다대다 연결 (기사 하나가 여러 선수/구단을 함께 언급하면 여러
+스레드에 동시에 연결될 수 있다).
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | BIGINT (PK) | 연결 ID |
+| rumor_thread_id | BIGINT (FK -> rumor_threads.id) | 스레드 |
+| article_id | BIGINT (FK -> articles.id) | 연결된 기사 |
+| story_stage | VARCHAR | 이 기사 자체의 스토리 단계 (제목+본문 키워드로 감지, `collector/rumor_clusterer.py`의 `detect_story_stage` 참고). `UNKNOWN`이면 애초에 클러스터링 대상에서 제외되므로(경기 리포트 등 이적과 무관한 기사가 스레드에 섞이는 것을 막기 위함) 이 컬럼에는 `UNKNOWN`이 저장되지 않는다 |
+
+클러스터링 규칙: 새 기사가 (구단 태그 있음 + 이적 키워드로 스토리 단계 판정됨 +
+선수명 후보 추출됨) 조건을 모두 만족하면, 같은 (선수명, 구단) 조합의 기존 스레드 중
+최근 14일 이내 기사가 있는 스레드에 합류시키고, 없으면 새 스레드를 만든다. 세 조건
+중 하나라도 없으면(구단 미태깅, UNKNOWN 단계, 선수명 후보 없음) 클러스터링하지 않는다.
+
 ## translations
 
 번역 결과 (기사와 1:1)

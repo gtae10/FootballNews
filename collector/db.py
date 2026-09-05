@@ -13,8 +13,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from club_matcher import build_alias_map, detect_clubs, fetch_clubs
+from player_extractor import build_excluded_names, extract_player_candidates
 from reporter_detector import detect_quoted_reporter, resolve_source_tier
 from rss_collector import CollectedArticle
+from rumor_clusterer import cluster_article, detect_story_stage
+from trusted_reporters import TRUSTED_REPORTERS
 
 # .env가 있으면 그 값을 os.environ에 채워 넣는다. 파일이 없으면 조용히 아무 일도
 # 하지 않고, get_engine()의 DEFAULT_DB_URL 폴백이 그대로 사용된다. 이미 설정된
@@ -47,12 +50,20 @@ def _load_alias_map() -> dict:
         return {}
 
 
+def _reporter_aliases() -> list:
+    aliases = []
+    for reporter in TRUSTED_REPORTERS:
+        aliases.extend(reporter["aliases"])
+    return aliases
+
+
 def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
     """수집된 기사 중 원문 URL이 아직 없는 기사만 저장한다.
 
     반환값은 새로 저장된 기사 수다. 이미 저장된 기사(original_url 중복)는 건너뛴다.
     """
     alias_map = _load_alias_map()
+    excluded_names = build_excluded_names(alias_map, _reporter_aliases())
     saved = 0
     with engine.begin() as connection:
         for article in articles:
@@ -104,6 +115,19 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     ),
                     {"article_id": article_id, "club_name": club_name},
                 )
+
+            # story_stage가 UNKNOWN이면(이적 관련 키워드가 전혀 없으면) 클러스터링하지 않는다.
+            # 그렇지 않으면 경기 리포트처럼 이적과 무관한 기사도 "같은 선수+구단 언급"이라는
+            # 이유만으로 루머 스레드에 섞여 들어가 교차검증으로 오인될 수 있다.
+            if detected_clubs:
+                story_stage = detect_story_stage(article.title_original, article.content_original)
+                if story_stage != "UNKNOWN":
+                    player_candidates = extract_player_candidates(article.title_original, excluded_names)
+                    if player_candidates:
+                        cluster_article(
+                            connection, article_id, article.published_at,
+                            player_candidates, detected_clubs, story_stage,
+                        )
 
             saved += 1
 
