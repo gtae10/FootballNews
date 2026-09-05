@@ -31,7 +31,8 @@ GET /articles
       "publishedAt": "2026-08-30T10:00:00Z",
       "originalUrl": "https://...",
       "clubs": ["Liverpool"],
-      "sourceTier": 1
+      "sourceTier": 1,
+      "imageUrl": "https://source-site.com/images/thumb.jpg"
     }
   ],
   "number": 0,
@@ -47,6 +48,12 @@ GET /articles
 
 `clubs`는 기사 본문에서 자동 감지된 구단명 배열이다 (이적 기사 등 여러 구단을 언급하면 2개 이상 담긴다).
 리그 전반 이슈처럼 특정 구단이 감지되지 않은 기사는 빈 배열(`[]`)로 내려온다.
+
+`imageUrl`은 RSS에서 찾은 대표 이미지의 원본 URL이다 (이미지 자체는 우리 서버에 저장하지 않는다 —
+`docs/DB_SCHEMA.md`의 `articles.image_url` 참고). 찾지 못했거나 이 컬럼 도입 이전에 수집된 기사는
+`null`이며, 프론트엔드는 이 경우 이미지 영역 없이 텍스트만 표시해야 한다. 원본 서버가 핫링크를
+차단하거나 이미지를 삭제하면 로드에 실패할 수 있으므로, 프론트는 이미지 로드 실패 시에도 텍스트만으로
+정상 표시되게 처리한다.
 
 ## 오늘의 주요 소식
 
@@ -77,7 +84,8 @@ GET /articles/{id}
   "originalUrl": "https://...",
   "publishedAt": "2026-08-30T10:00:00Z",
   "translatedAt": "2026-08-30T10:05:00Z",
-  "sourceTier": 1
+  "sourceTier": 1,
+  "imageUrl": "https://source-site.com/images/thumb.jpg"
 }
 ```
 

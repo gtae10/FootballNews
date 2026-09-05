@@ -41,7 +41,7 @@ class ArticleControllerTest {
                 id, titleKo, "Liverpool FC 공식",
                 LocalDateTime.of(2026, 8, 30, 10, 0),
                 "https://example.com/article/" + id,
-                List.of("Liverpool"), sourceTier
+                List.of("Liverpool"), sourceTier, null
         );
     }
 

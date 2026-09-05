@@ -60,7 +60,8 @@ public class ArticleService {
                 article.getOriginalUrl(),
                 article.getPublishedAt(),
                 translation != null ? translation.getTranslatedAt() : null,
-                article.getSourceTier()
+                article.getSourceTier(),
+                article.getImageUrl()
         );
     }
 
@@ -75,7 +76,8 @@ public class ArticleService {
                 article.getPublishedAt(),
                 article.getOriginalUrl(),
                 List.copyOf(new TreeSet<>(article.getClubs())),
-                article.getSourceTier()
+                article.getSourceTier(),
+                article.getImageUrl()
         );
     }
 }

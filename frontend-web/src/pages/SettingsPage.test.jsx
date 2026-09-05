@@ -135,4 +135,26 @@ describe("SettingsPage", () => {
     );
     expect(refresh).toHaveBeenCalled();
   });
+
+  describe("게스트 모드", () => {
+    beforeEach(() => {
+      useAuth.mockReturnValue({
+        user: null,
+        logout,
+        refresh,
+        isGuest: true,
+      });
+    });
+
+    it("설정 화면 대신 로그인 안내를 보여주고 인증이 필요한 API를 호출하지 않는다", async () => {
+      renderSettingsPage();
+
+      expect(await screen.findByText(/로그인이 필요한 기능입니다/)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Google 로그인하러 가기" })).toBeInTheDocument();
+
+      expect(apiFetch).not.toHaveBeenCalledWith("/users/me/preferences");
+      expect(apiFetch).not.toHaveBeenCalledWith("/reporter-suggestions/me");
+      expect(screen.queryByRole("button", { name: "제보하기" })).not.toBeInTheDocument();
+    });
+  });
 });

@@ -1,7 +1,25 @@
 from datetime import timezone
 from unittest.mock import call, patch, MagicMock
 
-from rss_collector import collect_from_rss
+from rss_collector import collect_from_rss, _extract_image_url
+
+
+class _FakeEntry:
+    """MagicMock 대신 쓰는 간단한 가짜 feedparser 엔트리.
+
+    MagicMock은 정의하지 않은 속성(media_thumbnail 등)에 접근해도 자동으로
+    또 다른 MagicMock을 만들어 반환하기 때문에("있음"으로 오인됨), 이미지 추출
+    경로별 분기(있음/없음)를 검증하려면 진짜로 속성이 "없을 때 없는" 이 가짜
+    객체가 필요하다.
+    """
+
+    def __init__(self, data=None, **attrs):
+        self._data = data or {}
+        for key, value in attrs.items():
+            setattr(self, key, value)
+
+    def get(self, key, default=""):
+        return self._data.get(key, default)
 
 
 def _mock_entry(published_parsed=None):
@@ -138,3 +156,97 @@ def test_collect_from_rss_does_not_sleep_when_delay_seconds_is_zero(mock_parse, 
     collect_from_rss("테스트 매체", "https://example.com/feed", max_pages=2, delay_seconds=0)
 
     mock_sleep.assert_not_called()
+
+
+def test_extract_image_url_from_media_thumbnail():
+    entry = _FakeEntry(media_thumbnail=[{"url": "https://example.com/thumb.jpg"}])
+
+    assert _extract_image_url(entry) == "https://example.com/thumb.jpg"
+
+
+def test_extract_image_url_from_media_content_with_image_medium():
+    entry = _FakeEntry(media_content=[{"url": "https://example.com/photo.jpg", "medium": "image"}])
+
+    assert _extract_image_url(entry) == "https://example.com/photo.jpg"
+
+
+def test_extract_image_url_from_media_content_with_image_mime_type():
+    entry = _FakeEntry(media_content=[{"url": "https://example.com/photo.jpg", "type": "image/jpeg"}])
+
+    assert _extract_image_url(entry) == "https://example.com/photo.jpg"
+
+
+def test_extract_image_url_ignores_non_image_media_content():
+    entry = _FakeEntry(media_content=[{"url": "https://example.com/clip.mp4", "type": "video/mp4"}])
+
+    assert _extract_image_url(entry) is None
+
+
+def test_extract_image_url_from_image_enclosure():
+    entry = _FakeEntry(enclosures=[{"href": "https://example.com/enclosure.jpg", "type": "image/jpeg"}])
+
+    assert _extract_image_url(entry) == "https://example.com/enclosure.jpg"
+
+
+def test_extract_image_url_ignores_non_image_enclosure():
+    entry = _FakeEntry(enclosures=[{"href": "https://example.com/audio.mp3", "type": "audio/mpeg"}])
+
+    assert _extract_image_url(entry) is None
+
+
+def test_extract_image_url_falls_back_to_img_tag_in_summary():
+    entry = _FakeEntry({"summary": '<p>본문 내용 <img src="https://example.com/inline.jpg" alt=""></p>'})
+
+    assert _extract_image_url(entry) == "https://example.com/inline.jpg"
+
+
+def test_extract_image_url_prefers_media_thumbnail_over_summary_img_tag():
+    entry = _FakeEntry(
+        {"summary": '<img src="https://example.com/inline.jpg">'},
+        media_thumbnail=[{"url": "https://example.com/thumb.jpg"}],
+    )
+
+    assert _extract_image_url(entry) == "https://example.com/thumb.jpg"
+
+
+def test_extract_image_url_returns_none_when_nothing_found():
+    entry = _FakeEntry({"summary": "이미지가 전혀 없는 본문입니다."})
+
+    assert _extract_image_url(entry) is None
+
+
+@patch("rss_collector.feedparser.parse")
+def test_collect_from_rss_includes_extracted_image_url(mock_parse):
+    entry = _FakeEntry(
+        {
+            "link": "https://example.com/article/1",
+            "title": "제목",
+            "summary": "요약",
+        },
+        media_thumbnail=[{"url": "https://example.com/thumb.jpg"}],
+    )
+    mock_feed = MagicMock()
+    mock_feed.entries = [entry]
+    mock_parse.return_value = mock_feed
+
+    articles = collect_from_rss("테스트 매체", "https://example.com/feed")
+
+    assert articles[0].image_url == "https://example.com/thumb.jpg"
+
+
+@patch("rss_collector.feedparser.parse")
+def test_collect_from_rss_sets_image_url_to_none_when_not_found(mock_parse):
+    entry = _FakeEntry(
+        {
+            "link": "https://example.com/article/1",
+            "title": "제목",
+            "summary": "이미지 없는 요약",
+        }
+    )
+    mock_feed = MagicMock()
+    mock_feed.entries = [entry]
+    mock_parse.return_value = mock_feed
+
+    articles = collect_from_rss("테스트 매체", "https://example.com/feed")
+
+    assert articles[0].image_url is None

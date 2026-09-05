@@ -10,6 +10,7 @@ public record ArticleSummaryResponse(
         LocalDateTime publishedAt,
         String originalUrl,
         List<String> clubs,
-        Integer sourceTier
+        Integer sourceTier,
+        String imageUrl
 ) {
 }

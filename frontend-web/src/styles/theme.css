@@ -328,11 +328,26 @@
   padding: 22px 0;
   border-bottom: 1px solid var(--rf-border-faint);
   display: flex;
-  flex-direction: column;
-  gap: 9px;
+  gap: 16px;
 }
 .rf-article-card:hover {
   background: #0c0b0c;
+}
+.rf-article-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}
+.rf-article-thumb {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--rf-bg-raised);
+  border: 1px solid var(--rf-border-faint);
 }
 .rf-article-meta {
   display: flex;

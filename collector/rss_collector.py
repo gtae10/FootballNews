@@ -1,11 +1,14 @@
 """RSS 기반 기사 수집 모듈."""
 
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
 
 import feedparser
+
+_IMG_TAG_SRC = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
 
 @dataclass
@@ -17,6 +20,7 @@ class CollectedArticle:
     published_at: datetime
     forced_club: Optional[str] = None
     source_tier: Optional[int] = None
+    image_url: Optional[str] = None
 
 
 def collect_from_rss(
@@ -61,6 +65,7 @@ def collect_from_rss(
                     published_at=published_at,
                     forced_club=forced_club,
                     source_tier=source_tier,
+                    image_url=_extract_image_url(entry),
                 )
             )
 
@@ -73,6 +78,45 @@ def collect_from_rss(
 def _paged_url(rss_url: str, page: int) -> str:
     separator = "&" if "?" in rss_url else "?"
     return f"{rss_url}{separator}paged={page}"
+
+
+def _extract_image_url(entry) -> Optional[str]:
+    """RSS 엔트리에서 대표 이미지 URL을 찾는다. 이미지 자체는 절대 다운로드/재호스핑하지
+    않고 URL만 반환한다 — 저작권 문제를 피하기 위해 프론트엔드가 원본 서버에서 직접
+    이미지를 불러온다 (docs/LEGAL_NOTES.md 참고).
+
+    소스마다 이미지를 싣는 방식이 달라 여러 경로를 순서대로 시도한다:
+    media:thumbnail → media:content(이미지 타입) → enclosure(이미지 타입) →
+    본문(summary) HTML에 박힌 첫 <img> 태그. 어디에도 없으면 None을 반환하며,
+    이 경우 프론트는 텍스트만으로 정상 표시한다(이미지 영역 자체를 렌더링하지 않음).
+    """
+    thumbnails = getattr(entry, "media_thumbnail", None)
+    if thumbnails:
+        url = thumbnails[0].get("url")
+        if url:
+            return url
+
+    for media in getattr(entry, "media_content", None) or []:
+        medium = media.get("medium")
+        media_type = media.get("type") or ""
+        if medium == "image" or media_type.startswith("image"):
+            url = media.get("url")
+            if url:
+                return url
+
+    for enclosure in getattr(entry, "enclosures", None) or []:
+        enclosure_type = enclosure.get("type") or ""
+        if enclosure_type.startswith("image"):
+            url = enclosure.get("href") or enclosure.get("url")
+            if url:
+                return url
+
+    summary = entry.get("summary", "")
+    match = _IMG_TAG_SRC.search(summary)
+    if match:
+        return match.group(1)
+
+    return None
 
 
 def _parse_published(entry) -> datetime:

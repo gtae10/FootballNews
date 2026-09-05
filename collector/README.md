@@ -85,7 +85,11 @@ python build_rumor_threads.py  # rumor_thread_articles에 연결이 없는 기�
 - `sources.py`: 수집 대상 소스 목록 (RSS URL, 크롤링 대상 사이트). 등록된 소스와
   선정 기준(robots.txt/이용약관 확인 결과 포함)은 파일 내 주석 참고.
 - `rss_collector.py`: RSS 기반 수집 로직. `max_pages`/`delay_seconds`로 과거 페이지
-  순회를 지원한다 (기본값은 1페이지만 조회 — 평소 실행과 동일하게 동작).
+  순회를 지원한다 (기본값은 1페이지만 조회 — 평소 실행과 동일하게 동작). 대표 이미지
+  URL도 함께 추출한다(`_extract_image_url`) — `media:thumbnail`/`media:content`/
+  `enclosure`/본문 내 `<img>` 태그 순으로 시도하고, 이미지 파일 자체는 다운로드/재호스팅
+  하지 않고 URL만 저장한다(저작권 문제 회피). 이 컬럼 도입 이전에 수집된 기사는 RSS
+  원본을 다시 조회해야만 채울 수 있어 소급 적용되지 않는다.
 - `club_matcher.py`: 백엔드 `GET /clubs` 기준으로 기사 본문에서 언급된 구단(들)을
   자동 감지하는 로직 (별칭 매핑 포함).
 - `trusted_reporters.py`: 인용 감지 대상 유명 기자/계정 목록과 신뢰도 등급(tier).

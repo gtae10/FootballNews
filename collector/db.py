@@ -89,10 +89,10 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     """
                     INSERT INTO articles
                         (source, original_url, title_original, content_original,
-                         published_at, collected_at, status, source_tier, quoted_reporter)
+                         published_at, collected_at, status, source_tier, quoted_reporter, image_url)
                     VALUES
                         (:source, :original_url, :title_original, :content_original,
-                         :published_at, :collected_at, 'COLLECTED', :source_tier, :quoted_reporter)
+                         :published_at, :collected_at, 'COLLECTED', :source_tier, :quoted_reporter, :image_url)
                     """
                 ),
                 {
@@ -104,6 +104,7 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     "collected_at": datetime.now(timezone.utc),
                     "source_tier": effective_source_tier,
                     "quoted_reporter": quoted_reporter,
+                    "image_url": article.image_url,
                 },
             )
             article_id = result.lastrowid

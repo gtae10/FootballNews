@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -66,5 +67,21 @@ class ArticleRepositoryTest {
         Page<Article> result = articleRepository.search(null, "존재하지않는검색어", PageRequest.of(0, 10));
 
         assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void imageUrl이_있으면_그대로_저장되고_없으면_null로_유지된다() {
+        Article withImage = articleRepository.save(new Article(
+                "Liverpool FC 공식", "https://example.com/with-image", "Liverpool unveil new kit",
+                "content", LocalDateTime.now(), new HashSet<>(), 1, null, "https://example.com/thumb.jpg"));
+        Article withoutImage = articleRepository.save(new Article(
+                "Liverpool FC 공식", "https://example.com/without-image", "Liverpool sign striker",
+                "content", LocalDateTime.now(), "Liverpool", 1));
+
+        Article reloadedWithImage = articleRepository.findById(withImage.getId()).orElseThrow();
+        Article reloadedWithoutImage = articleRepository.findById(withoutImage.getId()).orElseThrow();
+
+        assertThat(reloadedWithImage.getImageUrl()).isEqualTo("https://example.com/thumb.jpg");
+        assertThat(reloadedWithoutImage.getImageUrl()).isNull();
     }
 }

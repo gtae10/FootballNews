@@ -23,7 +23,8 @@ def _make_engine():
                     collected_at TEXT,
                     status TEXT,
                     source_tier INTEGER,
-                    quoted_reporter TEXT
+                    quoted_reporter TEXT,
+                    image_url TEXT
                 )
                 """
             )
@@ -108,6 +109,47 @@ def test_save_articles_inserts_new_article_with_forced_club_and_tier(mock_alias_
         assert row.source_tier == 2
         assert row.status == "COLLECTED"
         assert _club_names(connection, row.id) == ["Liverpool"]
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_persists_image_url_when_present(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="The Anfield Wrap",
+        original_url="https://theanfieldwrap.com/article/with-image",
+        title_original="Test Title",
+        content_original="Test Summary",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=2,
+        image_url="https://theanfieldwrap.com/thumb.jpg",
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT image_url FROM articles")).one()
+        assert row.image_url == "https://theanfieldwrap.com/thumb.jpg"
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_stores_null_image_url_when_not_found(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="The Anfield Wrap",
+        original_url="https://theanfieldwrap.com/article/no-image",
+        title_original="Test Title",
+        content_original="Test Summary",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=2,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT image_url FROM articles")).one()
+        assert row.image_url is None
 
 
 @patch("db._load_alias_map", return_value=_ALIAS_MAP)

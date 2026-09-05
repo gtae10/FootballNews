@@ -14,7 +14,7 @@ const LEAGUE_OPTIONS = [
 ];
 
 export default function SettingsPage() {
-  const { user, logout, refresh } = useAuth();
+  const { user, logout, refresh, isGuest } = useAuth();
   const navigate = useNavigate();
 
   const [nickname, setNickname] = useState(user?.nickname ?? "");
@@ -44,6 +44,14 @@ export default function SettingsPage() {
   const [suggestionError, setSuggestionError] = useState(null);
 
   useEffect(() => {
+    // 게스트는 계정이 없으므로 인증이 필요한 API를 호출하지 않는다 — 아래에서
+    // 로그인 안내만 보여주고 이 페이지의 나머지 기능은 렌더링하지 않는다.
+    if (isGuest) {
+      setClubsLoading(false);
+      setSuggestionsLoading(false);
+      return;
+    }
+
     Promise.all([apiFetch("/clubs"), apiFetch("/users/me/preferences")])
       .then(([clubList, preference]) => {
         setClubs(clubList);
@@ -60,7 +68,7 @@ export default function SettingsPage() {
       .finally(() => setClubsLoading(false));
 
     loadSuggestions();
-  }, []);
+  }, [isGuest]);
 
   function loadSuggestions() {
     setSuggestionsLoading(true);
@@ -187,6 +195,25 @@ export default function SettingsPage() {
       setWithdrawError(err.message);
       setWithdrawing(false);
     }
+  }
+
+  if (isGuest) {
+    return (
+      <div style={{ paddingTop: 26 }}>
+        <p>
+          <Link to="/feed" className="rf-mono" style={{ fontSize: 11, letterSpacing: "0.14em", color: "var(--rf-muted-1)" }}>
+            ← 피드
+          </Link>
+        </p>
+        <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em", margin: "24px 0 4px" }}>설정</h1>
+        <p className="rf-status" role="status">
+          로그인이 필요한 기능입니다. 관심 구단, 알림, 기자 제보는 로그인 후 이용할 수 있어요.
+        </p>
+        <Link to="/login" className="rf-btn-primary" style={{ display: "inline-block" }}>
+          Google 로그인하러 가기
+        </Link>
+      </div>
+    );
   }
 
   return (

@@ -45,4 +45,12 @@ describe("ProtectedRoute", () => {
 
     expect(screen.getByText("피드 페이지")).toBeInTheDocument();
   });
+
+  it("게스트 모드는 로그인하지 않았어도 보호된 페이지를 볼 수 있다", () => {
+    useAuth.mockReturnValue({ user: null, loading: false, isGuest: true });
+
+    renderProtectedRoute();
+
+    expect(screen.getByText("피드 페이지")).toBeInTheDocument();
+  });
 });

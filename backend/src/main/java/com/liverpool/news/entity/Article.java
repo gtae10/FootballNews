@@ -47,24 +47,37 @@ public class Article {
     @Column(name = "quoted_reporter")
     private String quotedReporter;
 
+    // 대표 이미지 URL. 이미지 파일 자체는 저장/재호스팅하지 않고 원본 서버의 URL만
+    // 보관한다 — 프론트엔드가 이 URL로 직접 이미지를 불러온다(collector/rss_collector.py의
+    // _extract_image_url 참고). 대부분의 소스에 RSS 이미지 메타데이터가 없어 nullable이고,
+    // 프론트는 없으면 텍스트만 표시한다.
+    @Column(name = "image_url")
+    private String imageUrl;
+
     protected Article() {
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt) {
-        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, new HashSet<>(), null, null);
+        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, new HashSet<>(), null, null, null);
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt,
                     String club, Integer sourceTier) {
         this(source, originalUrl, titleOriginal, contentOriginal, publishedAt,
-                club == null ? new HashSet<>() : new HashSet<>(Set.of(club)), sourceTier, null);
+                club == null ? new HashSet<>() : new HashSet<>(Set.of(club)), sourceTier, null, null);
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt,
                     Set<String> clubs, Integer sourceTier, String quotedReporter) {
+        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, clubs, sourceTier, quotedReporter, null);
+    }
+
+    public Article(String source, String originalUrl, String titleOriginal,
+                    String contentOriginal, LocalDateTime publishedAt,
+                    Set<String> clubs, Integer sourceTier, String quotedReporter, String imageUrl) {
         this.source = source;
         this.originalUrl = originalUrl;
         this.titleOriginal = titleOriginal;
@@ -75,6 +88,7 @@ public class Article {
         this.clubs = clubs == null ? new HashSet<>() : clubs;
         this.sourceTier = sourceTier;
         this.quotedReporter = quotedReporter;
+        this.imageUrl = imageUrl;
     }
 
     public Long getId() {
@@ -123,6 +137,10 @@ public class Article {
 
     public String getQuotedReporter() {
         return quotedReporter;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
     }
 
     public enum ArticleStatus {
