@@ -30,16 +30,43 @@ collector와 동일한 `articles`/`translations` 테이블 스키마를 사용�
 ## 동작 방식
 
 1. `db.fetch_untranslated_articles()`로 `articles.status = 'COLLECTED'`인 기사를 조회한다.
-2. 각 기사를 `translate_article()`로 번역한다 (`translate.py`).
-   - `html_cleanup.clean_for_translation()`으로 RSS 원문에 섞인 HTML 태그/엔티티와
-     워드프레스 특유의 "The post ... appeared first on ..." 푸터를 먼저 제거한다.
-     이 정리는 번역 직전에만 적용되며 DB에 저장된 `content_original`(원문) 자체는
-     건드리지 않는다.
-   - `argos_engine.translate()`(기본)로 실제 번역을 수행한다.
-   - `glossary.apply_glossary()`로 번역 결과에 남은 영문 축구 용어를 정해진
-     한국어 용어로 후처리 치환한다.
+2. 각 기사를 `translate_article()`로 번역한다 (`translate.py`). 전처리 → 번역 →
+   후처리 순서로 진행된다.
 3. 번역 결과를 `translations` 테이블에 저장하고, 해당 기사의 `status`를 `TRANSLATED`로
    갱신한다 (`db.save_translation()`).
+
+### 전처리 (번역 입력 다듬기)
+
+- `html_cleanup.clean_for_translation()`: RSS 원문에 섞인 HTML 태그/엔티티와
+  워드프레스 특유의 "The post ... appeared first on ..." 푸터를 제거한다. 이걸
+  안 하면 NMT가 `<a href="...">` 안의 URL까지 "번역"하려다 훼손하는 문제가 있었다.
+- `preprocessing.remove_noise()`: "Read more...", "[+123 chars]"처럼 RSS 요약에
+  흔한 잡음과 과도한 줄임표를 제거한다.
+- `preprocessing.split_into_translatable_chunks()` (Argos 엔진 내부에서 사용,
+  `argos_engine._translate_text`): 문장이 너무 길면(기본 40단어 초과) 접속사·
+  세미콜론 경계에서 쪼갠 뒤 조각별로 번역하고 다시 이어 붙인다. Argos Translate
+  같은 문장 단위 NMT는 짧은 문장에서 정확도가 높다는 전제다. 쪼갤 경계를 못
+  찾으면 억지로 자르지 않고 원문 그대로 둔다(단어 수 기준으로 강제로 자르면
+  문맥이 끊겨 오히려 품질이 나빠지기 때문).
+
+위 전처리는 DB에 저장된 `content_original`(원문) 자체는 건드리지 않고, 번역
+직전에만 적용된다.
+
+### 후처리 (번역 결과 다듬기)
+
+- `glossary.apply_glossary()`: 번역 결과에 남은 영문 축구 용어(예: "Midfielder",
+  "here we go")를 정해진 한국어 용어로 치환하고, Argos가 아예 다른 뜻으로
+  잘못 옮긴 것으로 확인된 몇몇 표현(`KOREAN_MISTRANSLATION_FIXES`, 예:
+  "transfer window"를 "전송 창"으로 오역하는 경우)도 함께 바로잡는다.
+  - **버그 수정 메모**: 이 함수는 원래 `\b`(단어 경계) 정규식으로 매칭했는데,
+    Python 정규식은 한글도 "단어 문자"로 취급해서 "Midfielder는"처럼 영단어
+    뒤에 한국어 조사가 공백 없이 붙는 실제 번역 결과에서 경계를 인식하지
+    못해 매칭에 실패하는 버그가 있었다. `(?<![A-Za-z])`/`(?![A-Za-z])` 기반
+    lookaround로 바꿔 고쳤다.
+- `postprocessing.clean_translation_output()`: 실제 Argos 출력에서 반복 관찰된
+  어색함 몇 가지를 규칙 기반으로 정리한다 — 조사 중복("이 이"), 형용사 어미 앞
+  불필요한 공백("긍정적 인" → "긍정적인"), 구두점 앞 공백, 중복 공백. 완벽한
+  교정이 아니라 눈에 띄는 어색함만 줄이는 수준이다.
 
 ## 엔진 구조 (교체 가능하도록 분리됨)
 
@@ -55,16 +82,33 @@ collector와 동일한 `articles`/`translations` 테이블 스키마를 사용�
 ## 번역 품질에 대한 솔직한 평가
 
 Argos Translate는 문장 단위 신경망 번역(NMT)이라 Claude 같은 LLM 기반 요약
-번역보다 품질이 낮을 수 있다:
+번역보다 품질이 낮을 수 있다. 전/후처리로 일부는 보정했지만, 구조적으로 규칙
+기반 전/후처리로는 고치기 어려운 문제도 있다:
 
-- 관용구·숙어를 단어별로 직역해 어색한 경우가 많다 (예: "pays tribute to" →
+**전/후처리로 개선된 것:**
+- 영문 축구 용어가 번역 결과에 그대로 남는 문제 (`apply_glossary` + `\b` 버그 수정)
+- 몇몇 확인된 오역 패턴 ("transfer window" → "전송 창")
+- 형용사 어미 앞 불필요한 공백 ("긍정적 인" → "긍정적인")
+- HTML 엔티티/태그로 인한 링크 훼손, RSS 잡음("Read more...", "[+N chars]")
+
+**여전히 남아있는 문제 (규칙 기반으로 고치기 어려움):**
+- **동음이의어 오역**: 구단 별칭 "Forest"(Nottingham Forest)를 "숲"(나무)으로,
+  "stance"(입장)를 "계단"으로, "outlined"(설명함)를 "비스듬한"으로 옮기는 등
+  문맥을 무시하고 흔한 뜻으로 잘못 고르는 경우가 있다. 축구 용어집으로는 못
+  잡는다 — 일반 단어의 문맥 의존적 오역이기 때문이다.
+- **강조 표현의 의미 반전**: "massive mistake"(심각한 실수)를 "매력적인
+  실수"(매력적/긍정적 뉘앙스)로 옮기는 등, 정도를 넘어 어감 자체가 반대로
+  바뀌는 경우가 있다.
+- 관용구·숙어를 단어별로 직역해 어색한 경우 (예: "pays tribute to" →
   "트리뷰를 지불하고"처럼 문자 그대로 옮겨지는 경우).
 - 선수 이름 등 고유명사의 한글 표기가 관용적 표기와 다를 수 있다 (예: "Mo
   Salah" → "모 살라"; 흔히 쓰는 표기는 "살라"/"모하메드 살라").
 - 요약 기능이 없다 — Claude 엔진과 달리 원문을 그대로 축약 없이 문장 단위로
   옮긴다. RSS가 이미 요약(summary)만 수집하므로 번역 대상 자체는 짧다.
 
-번역 품질이 더 중요해지는 시점에는 위 "엔진 구조"대로 상용 API로 교체하면 된다.
+이런 이유로 번역 결과를 무조건 저장하지 않고, 위와 같은 심각한 오역이 보이는
+기사는 저장을 보류하고 있다(수동 검수 필요). 번역 품질이 더 중요해지는
+시점에는 위 "엔진 구조"대로 상용 API로 교체하면 된다.
 
 ## 파일 구성
 
@@ -73,7 +117,12 @@ Argos Translate는 문장 단위 신경망 번역(NMT)이라 Claude 같은 LLM �
 - `anthropic_engine.py`: Claude(Anthropic API) 기반 번역 엔진 (현재 비활성, 보존용)
 - `setup_argos_model.py`: en->ko Argos Translate 모델을 다운로드/설치하는 1회성 스크립트
 - `html_cleanup.py`: 번역 직전에 RSS 원문의 HTML 태그/엔티티/워드프레스 푸터를 정리
-- `glossary.py`: 축구 용어 일관성을 위한 용어집. LLM 프롬프트 삽입(`build_glossary_prompt`)과
-  번역 결과 후처리 치환(`apply_glossary`) 두 가지 방식을 모두 제공한다
+- `preprocessing.py`: RSS 잡음 제거(`remove_noise`)와 긴 문장 분할
+  (`split_into_translatable_chunks`) — 번역 입력을 다듬는 전처리
+- `postprocessing.py`: 번역 결과에 흔히 남는 어색함(조사 중복, 어색한 띄어쓰기 등)을
+  규칙 기반으로 정리하는 후처리(`clean_translation_output`)
+- `glossary.py`: 축구 용어 일관성을 위한 용어집. LLM 프롬프트 삽입(`build_glossary_prompt`),
+  번역 결과 후처리 치환(`apply_glossary`), 확인된 오역 패턴 교정
+  (`KOREAN_MISTRANSLATION_FIXES`) 세 가지를 제공한다
 - `db.py`: 미번역 기사 조회 및 번역 결과 저장 (backend와 동일한 DB 스키마 사용)
 - `tests/`: 단위/통합 테스트 (Argos/Claude 호출 모두 mock 처리, DB 로직은 in-memory DB로 검증)

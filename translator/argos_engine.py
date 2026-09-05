@@ -19,6 +19,8 @@ from typing import Tuple
 import argostranslate.package
 import argostranslate.translate
 
+from preprocessing import split_into_translatable_chunks
+
 FROM_CODE = "en"
 TO_CODE = "ko"
 MODEL_VERSION = "argos-translate-en-ko"
@@ -31,6 +33,20 @@ def is_model_installed() -> bool:
     if from_lang is None:
         return False
     return any(t.to_lang.code == TO_CODE for t in from_lang.translations_from)
+
+
+def _translate_text(text: str) -> str:
+    """문장이 길면 접속사/구두점 경계에서 쪼갠 뒤 조각별로 번역해 다시 합친다.
+
+    Argos Translate 같은 문장 단위 NMT는 짧은 문장에서 정확도가 높다는 전제다
+    (translator/README.md 참고). 짧은 텍스트는 쪼갤 게 없어 원문 그대로 한 번에
+    번역된다.
+    """
+    chunks = split_into_translatable_chunks(text)
+    if not chunks:
+        return ""
+    translated_chunks = [argostranslate.translate.translate(chunk, FROM_CODE, TO_CODE) for chunk in chunks]
+    return " ".join(translated_chunks)
 
 
 def translate(title_original: str, content_original: str) -> Tuple[str, str, str]:
@@ -47,7 +63,7 @@ def translate(title_original: str, content_original: str) -> Tuple[str, str, str
             "먼저 `python setup_argos_model.py`를 실행하세요."
         )
 
-    title_ko = argostranslate.translate.translate(title_original, FROM_CODE, TO_CODE)
-    content_ko = argostranslate.translate.translate(content_original, FROM_CODE, TO_CODE)
+    title_ko = _translate_text(title_original)
+    content_ko = _translate_text(content_original)
 
     return title_ko, content_ko, MODEL_VERSION

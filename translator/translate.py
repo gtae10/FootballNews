@@ -11,6 +11,8 @@ from dataclasses import dataclass
 import db
 from glossary import apply_glossary
 from html_cleanup import clean_for_translation
+from postprocessing import clean_translation_output
+from preprocessing import remove_noise
 
 ENGINE = "argos"  # "argos"(기본, 오프라인/무료) | "anthropic"(Claude API, 유료)
 
@@ -22,10 +24,15 @@ class TranslationResult:
     model_version: str
 
 
+def _prepare_input(raw_text: str) -> str:
+    """HTML 정리 + RSS 잡음 제거를 순서대로 적용한다 (엔진 공통 전처리)."""
+    return remove_noise(clean_for_translation(raw_text))
+
+
 def translate_article(title_original: str, content_original: str) -> TranslationResult:
-    """원문 제목/본문을 번역하고, HTML 정리 + 용어집 후처리를 적용해 반환한다."""
-    clean_title = clean_for_translation(title_original)
-    clean_content = clean_for_translation(content_original)
+    """원문 제목/본문을 번역하고, 전처리(HTML/잡음 제거) + 용어집/문장 후처리를 적용해 반환한다."""
+    clean_title = _prepare_input(title_original)
+    clean_content = _prepare_input(content_original)
 
     if ENGINE == "anthropic":
         import anthropic_engine
@@ -37,8 +44,8 @@ def translate_article(title_original: str, content_original: str) -> Translation
         title_ko, content_ko, model_version = argos_engine.translate(clean_title, clean_content)
 
     return TranslationResult(
-        title_ko=apply_glossary(title_ko),
-        content_ko=apply_glossary(content_ko),
+        title_ko=clean_translation_output(apply_glossary(title_ko)),
+        content_ko=clean_translation_output(apply_glossary(content_ko)),
         model_version=model_version,
     )
 
