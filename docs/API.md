@@ -261,7 +261,8 @@ PUT /users/me/preferences
 ```json
 {
   "clubIds": [1, 2],
-  "notificationTrustLevel": 3
+  "notificationTrustLevel": 3,
+  "favoriteClubId": 1
 }
 ```
 
@@ -269,6 +270,25 @@ PUT /users/me/preferences
 최초 저장 시 온보딩이 완료된 것으로 간주된다 (`GET /auth/me`의 `onboarded`가 `true`로 바뀜).
 
 구독 구단을 추가/삭제할 때도 동일한 `PUT`을 사용한다 (원하는 `clubIds` 전체 목록을 다시 보낸다).
+
+`favoriteClubId`는 관심 구단 중 대표로 지정할 "최애팀"의 구단 id다 (선택, 생략하거나 `null`을
+보내면 최애팀 미지정 상태가 된다). 존재하지 않는 구단 id를 넘기면 400을 반환한다. `clubIds`에
+포함되지 않은 구단을 `favoriteClubId`로 지정하면 에러 대신 그 구단을 `clubIds`에 자동으로
+포함시켜 저장한다 (`docs/DB_SCHEMA.md`의 `user_preferences` 절 참고).
+
+응답 예시 (`GET`/`PUT` 동일한 형식)
+```json
+{
+  "clubs": [
+    { "id": 1, "name": "Liverpool", "league": "EPL" },
+    { "id": 2, "name": "Arsenal", "league": "EPL" }
+  ],
+  "notificationTrustLevel": 3,
+  "favoriteClub": { "id": 1, "name": "Liverpool", "league": "EPL" }
+}
+```
+
+최애팀을 지정하지 않았으면 `favoriteClub`은 `null`이다.
 
 ## 닉네임 변경
 

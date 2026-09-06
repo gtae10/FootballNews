@@ -46,19 +46,42 @@ public class UserPreferenceService {
 
         Set<Club> clubs = new HashSet<>(clubRepository.findAllById(request.clubIds()));
 
+        Club favoriteClub = null;
+        if (request.favoriteClubId() != null) {
+            favoriteClub = clubRepository.findById(request.favoriteClubId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "존재하지 않는 구단은 최애팀으로 지정할 수 없습니다: " + request.favoriteClubId()));
+            // 최애팀으로 지정한 구단이 관심 구단 목록에 없으면(온보딩 UI는 관심 구단 중에서만
+            // 고르게 하지만, API를 직접 호출하는 경우까지 방어한다) 에러 대신 관심 구단 목록에
+            // 자동으로 포함시킨다 — 한 번의 PUT으로 "관심 구단 추가 + 최애팀 지정"이 동시에
+            // 되는 편이 별도 400을 반환하는 것보다 자연스럽다.
+            clubs.add(favoriteClub);
+        }
+
+        Club favoriteClubForNewPreference = favoriteClub;
         UserPreference preference = userPreferenceRepository.findByUserId(userId)
-                .orElseGet(() -> new UserPreference(user, request.notificationTrustLevel(), clubs));
+                .orElseGet(() -> new UserPreference(user, request.notificationTrustLevel(), clubs, favoriteClubForNewPreference));
 
         preference.setNotificationTrustLevel(request.notificationTrustLevel());
         preference.setClubs(clubs);
+        preference.setFavoriteClub(favoriteClub);
 
         return toResponse(userPreferenceRepository.save(preference));
     }
 
     private UserPreferenceResponse toResponse(UserPreference preference) {
         List<ClubResponse> clubs = preference.getClubs().stream()
-                .map(club -> new ClubResponse(club.getId(), club.getName(), club.getLeague().name()))
+                .map(this::toClubResponse)
                 .toList();
-        return new UserPreferenceResponse(clubs, preference.getNotificationTrustLevel());
+        Club favoriteClub = preference.getFavoriteClub();
+        return new UserPreferenceResponse(
+                clubs,
+                preference.getNotificationTrustLevel(),
+                favoriteClub != null ? toClubResponse(favoriteClub) : null
+        );
+    }
+
+    private ClubResponse toClubResponse(Club club) {
+        return new ClubResponse(club.getId(), club.getName(), club.getLeague().name());
     }
 }

@@ -65,7 +65,7 @@ class UserPreferenceControllerTest {
 
     @Test
     void 인증_없이_저장시_401을_반환한다() throws Exception {
-        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L), 3);
+        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L), 3, null);
 
         mockMvc.perform(put("/api/v1/users/me/preferences")
                         .contentType("application/json")
@@ -76,7 +76,7 @@ class UserPreferenceControllerTest {
     @Test
     void 인증된_사용자의_선호도를_조회한다() throws Exception {
         UserPreferenceResponse response = new UserPreferenceResponse(
-                List.of(new ClubResponse(1L, "Liverpool", "EPL")), 3);
+                List.of(new ClubResponse(1L, "Liverpool", "EPL")), 3, null);
         when(userPreferenceService.getPreference(1L)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/users/me/preferences").cookie(VALID_COOKIE))
@@ -87,9 +87,9 @@ class UserPreferenceControllerTest {
 
     @Test
     void 인증된_사용자가_선호도를_저장한다() throws Exception {
-        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L, 2L), 4);
+        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L, 2L), 4, null);
         UserPreferenceResponse response = new UserPreferenceResponse(
-                List.of(new ClubResponse(1L, "Liverpool", "EPL"), new ClubResponse(2L, "Arsenal", "EPL")), 4);
+                List.of(new ClubResponse(1L, "Liverpool", "EPL"), new ClubResponse(2L, "Arsenal", "EPL")), 4, null);
         when(userPreferenceService.savePreference(eq(1L), any())).thenReturn(response);
 
         mockMvc.perform(put("/api/v1/users/me/preferences")
@@ -115,7 +115,47 @@ class UserPreferenceControllerTest {
 
     @Test
     void 신뢰도_범위를_벗어나면_400을_반환한다() throws Exception {
-        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L), 9);
+        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L), 9, null);
+
+        mockMvc.perform(put("/api/v1/users/me/preferences")
+                        .cookie(VALID_COOKIE)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void favoriteClubId를_포함해_저장하면_응답에_최애팀이_담긴다() throws Exception {
+        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L, 2L), 3, 1L);
+        UserPreferenceResponse response = new UserPreferenceResponse(
+                List.of(new ClubResponse(1L, "Liverpool", "EPL"), new ClubResponse(2L, "Arsenal", "EPL")),
+                3, new ClubResponse(1L, "Liverpool", "EPL"));
+        when(userPreferenceService.savePreference(eq(1L), any())).thenReturn(response);
+
+        mockMvc.perform(put("/api/v1/users/me/preferences")
+                        .cookie(VALID_COOKIE)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.favoriteClub.name").value("Liverpool"));
+    }
+
+    @Test
+    void favoriteClub이_없으면_응답의_favoriteClub은_null이다() throws Exception {
+        UserPreferenceResponse response = new UserPreferenceResponse(
+                List.of(new ClubResponse(1L, "Liverpool", "EPL")), 3, null);
+        when(userPreferenceService.getPreference(1L)).thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/users/me/preferences").cookie(VALID_COOKIE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.favoriteClub").doesNotExist());
+    }
+
+    @Test
+    void 존재하지_않는_구단을_최애팀으로_지정하면_400을_반환한다() throws Exception {
+        UserPreferenceRequest request = new UserPreferenceRequest(List.of(1L), 3, 999L);
+        when(userPreferenceService.savePreference(eq(1L), any()))
+                .thenThrow(new IllegalArgumentException("존재하지 않는 구단은 최애팀으로 지정할 수 없습니다: 999"));
 
         mockMvc.perform(put("/api/v1/users/me/preferences")
                         .cookie(VALID_COOKIE)

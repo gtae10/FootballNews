@@ -112,9 +112,16 @@ Google OAuth 로그인 사용자
 | id | BIGINT (PK) | ID |
 | user_id | BIGINT (FK -> users.id, UNIQUE) | 사용자 |
 | notification_trust_level | INT | 알림 신뢰도 1(공식 소스만) ~ 5(모든 소스) |
+| favorite_club_id | BIGINT (FK -> clubs.id, nullable) | 관심 구단(clubs) 중 대표로 지정한 "최애팀". 관심 구단과 달리 다대일 단방향 관계이며, 아직 최애팀을 지정하지 않은 사용자는 NULL이다 |
 
 `user_preference_clubs` 조인 테이블로 `user_preferences` ↔ `clubs` 다대다 관계를 관리한다
 (사용자의 온보딩 완료 여부는 이 테이블에 row가 있는지로 판단한다).
+
+최애팀으로 지정한 구단이 관심 구단(`user_preference_clubs`) 목록에 없으면 에러를 반환하는
+대신 관심 구단 목록에 자동으로 추가한다 (`UserPreferenceService.savePreference` 참고) —
+한 번의 `PUT`으로 "관심 구단 추가 + 최애팀 지정"이 동시에 되는 편이 별도 400을 반환하는
+것보다 자연스럽다고 판단했다. 온보딩/설정 UI 자체는 이미 선택된 관심 구단 중에서만 최애팀을
+고르게 하므로, 이 자동 추가 경로는 API를 직접 호출하는 경우에 대한 방어 장치다.
 
 ## reporter_suggestions
 

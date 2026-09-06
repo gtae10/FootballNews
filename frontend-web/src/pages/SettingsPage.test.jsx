@@ -136,6 +136,63 @@ describe("SettingsPage", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  describe("최애팀", () => {
+    it("저장된 최애팀이 별표로 표시된다", async () => {
+      apiFetch.mockImplementation(async (path, options = {}) => {
+        const method = options.method ?? "GET";
+        if (path === "/clubs" && method === "GET") return CLUBS;
+        if (path === "/users/me/preferences" && method === "GET") {
+          return { clubs: [CLUBS[0], CLUBS[1]], notificationTrustLevel: 3, favoriteClub: CLUBS[0] };
+        }
+        if (path === "/reporter-suggestions/me" && method === "GET") return [];
+        return {};
+      });
+
+      renderSettingsPage();
+
+      expect(await screen.findByRole("button", { name: "★ Liverpool" })).toHaveAttribute("data-selected", "true");
+      expect(screen.getByRole("button", { name: "★ Arsenal" })).toHaveAttribute("data-selected", "false");
+    });
+
+    it("최애팀을 바꿔서 저장하면 favoriteClubId가 함께 전달된다", async () => {
+      mockApiFetchDefaults();
+      renderSettingsPage();
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "★ Liverpool" }));
+      await user.click(screen.getByRole("button", { name: "관심 설정 저장" }));
+
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith(
+          "/users/me/preferences",
+          expect.objectContaining({
+            method: "PUT",
+            body: JSON.stringify({ clubIds: [1], notificationTrustLevel: 3, favoriteClubId: 1 }),
+          })
+        )
+      );
+    });
+
+    it("최애팀 구단의 관심 설정을 해제하면 최애팀 지정도 함께 풀린다", async () => {
+      apiFetch.mockImplementation(async (path, options = {}) => {
+        const method = options.method ?? "GET";
+        if (path === "/clubs" && method === "GET") return CLUBS;
+        if (path === "/users/me/preferences" && method === "GET") {
+          return { clubs: [CLUBS[0]], notificationTrustLevel: 3, favoriteClub: CLUBS[0] };
+        }
+        if (path === "/reporter-suggestions/me" && method === "GET") return [];
+        return {};
+      });
+
+      renderSettingsPage();
+
+      await screen.findByRole("button", { name: "★ Liverpool" });
+      await userEvent.setup().click(screen.getByRole("checkbox", { name: "Liverpool" }));
+
+      expect(screen.queryByRole("button", { name: "★ Liverpool" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("게스트 모드", () => {
     beforeEach(() => {
       useAuth.mockReturnValue({

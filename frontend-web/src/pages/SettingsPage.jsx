@@ -28,6 +28,7 @@ export default function SettingsPage() {
 
   const [clubs, setClubs] = useState([]);
   const [selectedClubIds, setSelectedClubIds] = useState(new Set());
+  const [favoriteClubId, setFavoriteClubId] = useState(null);
   const [notificationTrustLevel, setNotificationTrustLevel] = useState(null);
   const [clubsLoading, setClubsLoading] = useState(true);
   const [clubsSaving, setClubsSaving] = useState(false);
@@ -56,6 +57,7 @@ export default function SettingsPage() {
       .then(([clubList, preference]) => {
         setClubs(clubList);
         setSelectedClubIds(new Set(preference.clubs.map((club) => club.id)));
+        setFavoriteClubId(preference.favoriteClub?.id ?? null);
         setNotificationTrustLevel(preference.notificationTrustLevel);
       })
       .catch((err) => {
@@ -91,11 +93,18 @@ export default function SettingsPage() {
       const next = new Set(prev);
       if (next.has(clubId)) {
         next.delete(clubId);
+        // 관심 구단에서 제외된 구단이 최애팀으로 지정돼 있었다면 함께 해제한다.
+        setFavoriteClubId((favorite) => (favorite === clubId ? null : favorite));
       } else {
         next.add(clubId);
       }
       return next;
     });
+  }
+
+  function toggleFavoriteClub(clubId) {
+    setClubsSaved(false);
+    setFavoriteClubId((prev) => (prev === clubId ? null : clubId));
   }
 
   async function handleSaveNickname(event) {
@@ -131,6 +140,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           clubIds: [...selectedClubIds],
           notificationTrustLevel,
+          favoriteClubId,
         }),
       });
       setClubsSaved(true);
@@ -311,6 +321,29 @@ export default function SettingsPage() {
                 </fieldset>
               ))}
             </div>
+            {selectedClubIds.size > 0 && (
+              <div style={{ paddingTop: 22 }}>
+                <div className="rf-section-label" style={{ border: "none", paddingBottom: 10 }}>
+                  최애팀
+                </div>
+                <div className="rf-chip-group">
+                  {clubs
+                    .filter((club) => selectedClubIds.has(club.id))
+                    .map((club) => (
+                      <button
+                        key={club.id}
+                        type="button"
+                        className="rf-chip"
+                        data-selected={favoriteClubId === club.id ? "true" : "false"}
+                        aria-pressed={favoriteClubId === club.id}
+                        onClick={() => toggleFavoriteClub(club.id)}
+                      >
+                        ★ {club.name}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 20 }}>
               <button type="button" className="rf-btn-primary" style={{ flex: "none" }} onClick={handleSaveClubs} disabled={clubsSaving}>
                 {clubsSaving ? "저장 중..." : "관심 설정 저장"}

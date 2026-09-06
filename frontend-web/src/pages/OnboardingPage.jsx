@@ -19,6 +19,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [clubs, setClubs] = useState([]);
   const [selectedClubIds, setSelectedClubIds] = useState(new Set());
+  const [favoriteClubId, setFavoriteClubId] = useState(null);
   const [search, setSearch] = useState("");
   const [trustLevel, setTrustLevel] = useState(3);
   const [loading, setLoading] = useState(true);
@@ -52,11 +53,17 @@ export default function OnboardingPage() {
       const next = new Set(prev);
       if (next.has(clubId)) {
         next.delete(clubId);
+        // 관심 구단에서 제외된 구단이 최애팀으로 지정돼 있었다면 함께 해제한다.
+        setFavoriteClubId((favorite) => (favorite === clubId ? null : favorite));
       } else {
         next.add(clubId);
       }
       return next;
     });
+  }
+
+  function toggleFavoriteClub(clubId) {
+    setFavoriteClubId((prev) => (prev === clubId ? null : clubId));
   }
 
   async function handleFinish() {
@@ -68,6 +75,7 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           clubIds: [...selectedClubIds],
           notificationTrustLevel: trustLevel,
+          favoriteClubId,
         }),
       });
       await refresh();
@@ -130,6 +138,25 @@ export default function OnboardingPage() {
               </div>
             ))}
           </div>
+          {selectedClubs.length > 0 && (
+            <div>
+              <div className="rf-league-label">최애팀 (선택)</div>
+              <div className="rf-chip-group">
+                {selectedClubs.map((club) => (
+                  <button
+                    key={club.id}
+                    type="button"
+                    className="rf-chip"
+                    data-selected={favoriteClubId === club.id ? "true" : "false"}
+                    aria-pressed={favoriteClubId === club.id}
+                    onClick={() => toggleFavoriteClub(club.id)}
+                  >
+                    ★ {club.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 14, paddingTop: 12 }}>
             <button
               type="button"
@@ -195,6 +222,14 @@ export default function OnboardingPage() {
               </div>
               <div style={{ flex: 1, fontSize: 14.5, lineHeight: 1.7 }}>
                 {selectedClubs.map((club) => club.name).join(" · ")}
+              </div>
+            </div>
+            <div className="rf-row">
+              <div className="rf-mono rf-row-label" style={{ fontSize: 11, letterSpacing: "0.14em" }}>
+                FAVORITE
+              </div>
+              <div style={{ flex: 1, fontSize: 14.5 }}>
+                {selectedClubs.find((club) => club.id === favoriteClubId)?.name ?? "미설정"}
               </div>
             </div>
             <div className="rf-row">

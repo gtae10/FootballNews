@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { isUnauthorized } from "../utils/handleApiError";
 import { tierBadge, timeAgo } from "../utils/articleDisplay";
 import TopArticlesBox from "../components/TopArticlesBox";
+import FavoriteTeamSection from "../components/FavoriteTeamSection";
 
 const CATEGORY_OPTIONS = [
   { value: "", label: "전체" },
@@ -87,6 +88,13 @@ export default function FeedPage() {
       </div>
 
       <TopArticlesBox />
+
+      <FavoriteTeamSection
+        onViewAll={(clubName) => {
+          setClubFilter(clubName);
+          setCategoryFilter("");
+        }}
+      />
 
       <div className="rf-chip-group" style={{ paddingTop: 18 }}>
         {CATEGORY_OPTIONS.map((option) => (
