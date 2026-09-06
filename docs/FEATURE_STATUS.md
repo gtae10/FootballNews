@@ -4,11 +4,9 @@
 
 **확인 시점**: 2026-09-07. **확인 방법**: git 커밋 로그, 로컬 MySQL80(`footballnews` DB) 직접 조회, 각 모듈 테스트 스위트 실행(백엔드 `./gradlew test`, collector/translator `pytest`, 프론트 `vitest run`), 일부는 실제로 서버를 띄워 브라우저로 확인.
 
-**새 세션을 시작하기 전에 이 문서를 먼저 읽으세요.** 특히 아래 "⚠️ 커밋되지 않은 완료 기능" 항목은 `git log`만 봐서는 존재를 알 수 없습니다 — working tree(코드 파일)를 직접 확인해야 보입니다.
+**새 세션을 시작하기 전에 이 문서를 먼저 읽으세요.**
 
-## ⚠️ 커밋되지 않은 완료 기능 (주의)
-
-**최애팀(favoriteClub)**과 **카테고리 분류(MATCH/TRANSFER/PLAYER/OTHER)** 두 기능은 코드/DB 반영/테스트가 전부 끝났지만 **아직 하나도 커밋되지 않았습니다** (2026-09-07 기준 working tree에만 존재). `git log`로 확인하면 "구현 안 됨"으로 잘못 판단하기 쉬우니, 이 두 기능을 다시 요청받으면 먼저 아래 표를 보고 working tree(`git status`)를 확인하세요.
+> **갱신 이력**: 2026-09-07 최초 작성 시점엔 최애팀/카테고리 분류가 미커밋 상태였으나, 같은 날 커밋 `d362233`(카테고리 분류), `93ee6ca`(최애팀), `c89dbde`(이 문서 자체)로 커밋 완료됨. 아래 4/8번 항목은 이 커밋 반영 후 내용임.
 
 ---
 
@@ -42,13 +40,12 @@
 
 ### 4. 최애팀 (favoriteClub)
 
-**⚠️ 코드/DB/테스트 전부 완료, 그러나 미커밋** (working tree, 2026-09-06~07 세션에서 확인)
+**✅ 완료** (커밋 `93ee6ca`, 2026-09-07)
 
 - 코드: `UserPreference.favoriteClub`(Club 다대일 단방향, nullable), `UserPreferenceRequest`/`Response`의 `favoriteClubId`/`favoriteClub`, 온보딩·설정 페이지의 ★ 칩 UI, `FavoriteTeamSection` 컴포넌트(피드 상단, club/category 필터와 무관하게 항상 최애팀 기준 고정)
 - 설계 결정: 관심 구단 목록에 없는 구단을 최애팀으로 지정하면 에러 대신 관심 구단에 자동 추가함 (`UserPreferenceService.savePreference` 주석 참고)
 - DB: `user_preferences.favorite_club_id` 컬럼 + `clubs.id` FK 제약조건 — 2026-09-06 `./gradlew bootRun` 최초 실행 시 Hibernate가 생성하는 것을 로그로 직접 확인함(그 전까지 이 DB엔 컬럼 자체가 없었음). 실사용 데이터는 아직 0건(최애팀을 설정한 사용자 없음)
 - 테스트: 백엔드 `UserPreferenceServiceTest`/`UserPreferenceControllerTest`, 프론트 `FavoriteTeamSection.test.jsx`/`OnboardingPage.test.jsx`/`SettingsPage.test.jsx` — 전부 통과(2026-09-07 재실행: 백엔드 53개, 프론트 39개 중 포함)
-- **커밋 없음** — git 커밋 로그로는 이 기능의 존재를 알 수 없음
 
 ### 5. 구단 자동 태깅 (article_clubs)
 
@@ -71,19 +68,18 @@
 **✅ 완료** (커밋 `cc191e7`, 2026-09-05)
 
 - 코드: `collector/rumor_clusterer.py`(스토리 단계 판정 + 스레드 클러스터링), `collector/build_rumor_threads.py`(소급 배치), 백엔드 `RumorThreadController`/`RumorThreadRepository`
-- 참고: `rumor_clusterer.py`는 2026-09-06 카테고리 분류 키워드 보강 작업 때문에 `_STAGE_KEYWORDS`가 추가로 수정됐음(아직 미커밋) — 루머 클러스터링 자체의 신규 기능은 아니고 기존 스테이지 판정 키워드 확장
+- 참고: `rumor_clusterer.py`는 2026-09-06 카테고리 분류 키워드 보강 작업 때문에 `_STAGE_KEYWORDS`가 추가로 수정됐음(커밋 `d362233`에 포함) — 루머 클러스터링 자체의 신규 기능은 아니고 기존 스테이지 판정 키워드 확장
 - DB: `rumor_threads` 18건, `rumor_thread_articles` 21건 연결. **`cross_reported=true`인 스레드는 현재 0건** — 기능 자체는 동작하지만(로직/테스트로 확인됨), 지금 이 DB의 실제 데이터에서는 아직 "48시간 내 2개 이상 매체가 보도"한 사례가 나타나지 않았다는 뜻(결함 아님, 데이터 양이 적어서일 가능성이 높음)
 - 테스트: 백엔드 `RumorThreadControllerTest`/`RumorThreadRepositoryTest`, collector `test_rumor_clusterer.py`/`test_build_rumor_threads.py` — 전부 통과(2026-09-07 재실행)
 
 ### 8. 카테고리 분류 (MATCH/TRANSFER/PLAYER/OTHER)
 
-**⚠️ 코드/DB/테스트 전부 완료, 그러나 미커밋** (working tree, 2026-09-06 세션에서 확인)
+**✅ 완료** (커밋 `d362233`, 2026-09-07)
 
 - 코드: `ArticleCategory` enum, `collector/article_classifier.py`(규칙 기반 분류, 우선순위: 루머 스레드 클러스터링 > MATCH 키워드 > PLAYER 키워드 > 미클러스터링 이적 키워드 > OTHER), `collector/category_keywords.py`(MATCH/PLAYER 키워드), `collector/backfill_categories.py`(소급 배치), `collector/db.py`의 `save_articles`가 신규 수집 시점에 자동 분류하도록 연결됨
 - DB: `articles.category` 컬럼 — 2026-09-06 최초 `bootRun` 시 Hibernate가 생성(그 전엔 컬럼 없음). 실제 소급 적용 + 키워드 2차 보강 후 최종 분포(2026-09-07 기준, 총 477건): MATCH 36 / TRANSFER 102 / PLAYER 10 / OTHER 329, NULL 0건. (키워드 보강 전 370건 기준 최초 분포는 MATCH 17 / TRANSFER 55 / PLAYER 9 / OTHER 289였음 — 이후 신규 수집 107건이 자동 분류되며 총량과 비율이 변함)
 - 알려진 한계(의도적으로 보류): 하이픈 없는 스코어라인("Newcastle 2 Liverpool 2" 형식), "proposed move"/"approach"처럼 오탐 위험이 큰 표현은 키워드에 추가하지 않음. OTHER 비중은 실제로 상당수가 킷 발매/굿즈/심판 판정 논란/팟캐스트 세그먼트 등 "리그 전반 이슈"라 정당한 분류로 판단됨(표본 검토 완료)
 - 테스트: 백엔드 `ArticleControllerTest`/`ArticleRepositoryTest`, collector `test_article_classifier.py`/`test_backfill_categories.py`/`test_rumor_clusterer.py`(스테이지 키워드) — 전부 통과(2026-09-07 재실행)
-- **커밋 없음** — git 커밋 로그로는 이 기능의 존재를 알 수 없음
 
 ### 9. 기사 이미지 썸네일
 
