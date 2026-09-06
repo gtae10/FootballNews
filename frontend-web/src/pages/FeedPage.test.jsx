@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import FeedPage from "./FeedPage";
@@ -165,5 +166,47 @@ describe("FeedPage 기사 썸네일", () => {
 
     expect(image).toHaveStyle({ display: "none" });
     expect(screen.getByText("깨진 이미지 기사")).toBeInTheDocument();
+  });
+});
+
+describe("FeedPage 카테고리 필터", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuth.mockReturnValue({ isGuest: true });
+  });
+
+  it("기본값은 전체이며, 카테고리 파라미터 없이 조회한다", async () => {
+    mockApiFetch();
+    renderFeedPage();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "전체" })).toHaveAttribute("data-selected", "true"));
+    expect(apiFetch).toHaveBeenCalledWith("/articles");
+  });
+
+  it("경기 칩을 누르면 category=MATCH로 다시 조회한다", async () => {
+    mockApiFetch();
+    renderFeedPage();
+    const user = userEvent.setup();
+
+    await screen.findByRole("button", { name: "경기" });
+    await user.click(screen.getByRole("button", { name: "경기" }));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/articles?category=MATCH"));
+    expect(screen.getByRole("button", { name: "경기" })).toHaveAttribute("data-selected", "true");
+    expect(screen.getByRole("button", { name: "전체" })).toHaveAttribute("data-selected", "false");
+  });
+
+  it("club과 category를 함께 지정하면 두 파라미터가 모두 전달된다", async () => {
+    mockApiFetch();
+    renderFeedPage();
+    const user = userEvent.setup();
+
+    await screen.findByRole("option", { name: "Liverpool" });
+    await user.selectOptions(screen.getByRole("combobox"), "Liverpool");
+    await user.click(screen.getByRole("button", { name: "이적" }));
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/articles?club=Liverpool&category=TRANSFER")
+    );
   });
 });

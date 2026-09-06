@@ -41,13 +41,13 @@ class ArticleControllerTest {
                 id, titleKo, "Liverpool FC 공식",
                 LocalDateTime.of(2026, 8, 30, 10, 0),
                 "https://example.com/article/" + id,
-                List.of("Liverpool"), sourceTier, null
+                List.of("Liverpool"), sourceTier, null, null
         );
     }
 
     @Test
     void 기사_목록_조회시_200_응답과_기사_목록을_반환한다() throws Exception {
-        when(articleService.getArticles(any(), isNull(), isNull()))
+        when(articleService.getArticles(any(), isNull(), isNull(), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "리버풀, 다음 시즌 새 유니폼 공개", 1))));
 
         mockMvc.perform(get("/api/v1/articles"))
@@ -58,7 +58,7 @@ class ArticleControllerTest {
 
     @Test
     void club_파라미터로_기사_목록을_필터링한다() throws Exception {
-        when(articleService.getArticles(any(), eq("Liverpool"), isNull()))
+        when(articleService.getArticles(any(), eq("Liverpool"), isNull(), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "필터링된 기사", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("club", "Liverpool"))
@@ -68,7 +68,7 @@ class ArticleControllerTest {
 
     @Test
     void keyword_파라미터로_기사_목록을_필터링한다() throws Exception {
-        when(articleService.getArticles(any(), isNull(), eq("유니폼")))
+        when(articleService.getArticles(any(), isNull(), eq("유니폼"), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "리버풀, 다음 시즌 새 유니폼 공개", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("keyword", "유니폼"))
@@ -78,12 +78,22 @@ class ArticleControllerTest {
 
     @Test
     void club과_keyword를_함께_넘기면_둘_다_서비스로_전달된다() throws Exception {
-        when(articleService.getArticles(any(), eq("Liverpool"), eq("유니폼")))
+        when(articleService.getArticles(any(), eq("Liverpool"), eq("유니폼"), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "리버풀, 다음 시즌 새 유니폼 공개", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("club", "Liverpool").param("keyword", "유니폼"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].titleKo").value("리버풀, 다음 시즌 새 유니폼 공개"));
+    }
+
+    @Test
+    void category_파라미터로_기사_목록을_필터링한다() throws Exception {
+        when(articleService.getArticles(any(), isNull(), isNull(), eq("MATCH")))
+                .thenReturn(new PageImpl<>(List.of(summary(1L, "경기 기사", 1))));
+
+        mockMvc.perform(get("/api/v1/articles").param("category", "MATCH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].titleKo").value("경기 기사"));
     }
 
     @Test

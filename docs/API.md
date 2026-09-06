@@ -14,11 +14,13 @@ GET /articles
 - `club`: 특정 구단 기사만 필터링 (선택, 예: `club=Liverpool`). 기사 하나가 여러 구단을 언급할 수 있어
   응답의 `clubs`는 배열이지만, 필터 파라미터는 단일 구단명만 받는다 — 그 구단이 `clubs` 배열에 포함된
   기사가 매칭된다.
+- `category`: 카테고리 필터링 (선택, `MATCH`/`TRANSFER`/`PLAYER`/`OTHER` 중 하나, 대소문자 구분 없음).
+  `docs/DB_SCHEMA.md`의 `articles.category` 참고. 알 수 없는 값을 넘기면 400을 반환한다.
 - `from`, `to`: 발행일 범위 필터 (선택, 미구현)
 - `keyword`: 제목 검색 (선택, 구현됨). 번역 제목(`titleKo`) 또는 원문 제목(`titleOriginal`) 중
   하나라도 검색어를 포함하면 매칭된다 (대소문자 구분 없음, 부분 일치). 아직 번역되지 않은 기사는
   `titleOriginal` 기준으로만 매칭된다. 본문(`content`)은 검색 대상이 아니다.
-- `club`과 `keyword`를 동시에 지정하면 AND 조건으로 적용된다 (해당 구단이면서 검색어를 포함하는 기사만 반환).
+- `club`, `category`, `keyword`를 함께 지정하면 모두 AND 조건으로 적용된다.
 
 응답 예시 (Spring Data `Page` 직렬화 형식 그대로 반환됨. 현재 페이지 인덱스는 `page`가 아니라 `number`)
 ```json
@@ -32,7 +34,8 @@ GET /articles
       "originalUrl": "https://...",
       "clubs": ["Liverpool"],
       "sourceTier": 1,
-      "imageUrl": "https://source-site.com/images/thumb.jpg"
+      "imageUrl": "https://source-site.com/images/thumb.jpg",
+      "category": "TRANSFER"
     }
   ],
   "number": 0,
@@ -48,6 +51,9 @@ GET /articles
 
 `clubs`는 기사 본문에서 자동 감지된 구단명 배열이다 (이적 기사 등 여러 구단을 언급하면 2개 이상 담긴다).
 리그 전반 이슈처럼 특정 구단이 감지되지 않은 기사는 빈 배열(`[]`)로 내려온다.
+
+`category`는 `MATCH`/`TRANSFER`/`PLAYER`/`OTHER` 중 하나이며, 아직 분류되지 않은 기사는
+`null`이다 (`docs/DB_SCHEMA.md`의 `articles.category` 참고).
 
 `imageUrl`은 RSS에서 찾은 대표 이미지의 원본 URL이다 (이미지 자체는 우리 서버에 저장하지 않는다 —
 `docs/DB_SCHEMA.md`의 `articles.image_url` 참고). 찾지 못했거나 이 컬럼 도입 이전에 수집된 기사는
@@ -85,7 +91,8 @@ GET /articles/{id}
   "publishedAt": "2026-08-30T10:00:00Z",
   "translatedAt": "2026-08-30T10:05:00Z",
   "sourceTier": 1,
-  "imageUrl": "https://source-site.com/images/thumb.jpg"
+  "imageUrl": "https://source-site.com/images/thumb.jpg",
+  "category": "TRANSFER"
 }
 ```
 
@@ -308,4 +315,4 @@ GET /reporter-suggestions/me
 
 `GET /reporter-suggestions/me`는 로그인한 사용자 본인이 제출한 제보 목록을 최신순으로 반환한다.
 
-향후 추가 예정: 즐겨찾기, 태그/카테고리 필터
+향후 추가 예정: 즐겨찾기

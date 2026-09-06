@@ -54,30 +54,43 @@ public class Article {
     @Column(name = "image_url")
     private String imageUrl;
 
+    // collector가 저장/소급 배치 시점에 규칙 기반으로 채운다(collector/article_classifier.py).
+    // 이 컬럼 도입 이전에 수집된 기사나, 아직 소급 배치가 돌지 않은 기사는 null일 수 있다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category")
+    private ArticleCategory category;
+
     protected Article() {
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt) {
-        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, new HashSet<>(), null, null, null);
+        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, new HashSet<>(), null, null, null, null);
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt,
                     String club, Integer sourceTier) {
         this(source, originalUrl, titleOriginal, contentOriginal, publishedAt,
-                club == null ? new HashSet<>() : new HashSet<>(Set.of(club)), sourceTier, null, null);
+                club == null ? new HashSet<>() : new HashSet<>(Set.of(club)), sourceTier, null, null, null);
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt,
                     Set<String> clubs, Integer sourceTier, String quotedReporter) {
-        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, clubs, sourceTier, quotedReporter, null);
+        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, clubs, sourceTier, quotedReporter, null, null);
     }
 
     public Article(String source, String originalUrl, String titleOriginal,
                     String contentOriginal, LocalDateTime publishedAt,
                     Set<String> clubs, Integer sourceTier, String quotedReporter, String imageUrl) {
+        this(source, originalUrl, titleOriginal, contentOriginal, publishedAt, clubs, sourceTier, quotedReporter, imageUrl, null);
+    }
+
+    public Article(String source, String originalUrl, String titleOriginal,
+                    String contentOriginal, LocalDateTime publishedAt,
+                    Set<String> clubs, Integer sourceTier, String quotedReporter, String imageUrl,
+                    ArticleCategory category) {
         this.source = source;
         this.originalUrl = originalUrl;
         this.titleOriginal = titleOriginal;
@@ -89,6 +102,7 @@ public class Article {
         this.sourceTier = sourceTier;
         this.quotedReporter = quotedReporter;
         this.imageUrl = imageUrl;
+        this.category = category;
     }
 
     public Long getId() {
@@ -141,6 +155,10 @@ public class Article {
 
     public String getImageUrl() {
         return imageUrl;
+    }
+
+    public ArticleCategory getCategory() {
+        return category;
     }
 
     public enum ArticleStatus {

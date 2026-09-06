@@ -17,6 +17,7 @@
 | source_tier | INT (nullable) | 소스 신뢰도 등급 (1이 가장 신뢰도 높음, "오늘의 주요 소식" 정렬에 사용). `article_clubs`에 태깅된 구단이 없거나 매체 자체 등급이 있어도, 신뢰도 높은 기자/계정이 인용된 것으로 감지되면(quoted_reporter) 더 낮은(신뢰도 높은) 값으로 갱신될 수 있다 (collector/reporter_detector.py 참고) |
 | quoted_reporter | VARCHAR (nullable) | 본문에 인용된 것으로 감지된 유명 기자/계정 이름 (collector/trusted_reporters.py에 등록된 이름 중 하나). 감지되지 않으면 NULL |
 | image_url | VARCHAR (nullable) | 대표 이미지 URL. 이미지 파일 자체는 다운로드/재호스팅하지 않고 원본 서버의 URL만 저장하며, 프론트엔드가 이 URL로 직접 이미지를 불러온다(저작권 문제 회피). RSS의 `media:thumbnail`/`media:content`/`enclosure`/본문 내 `<img>` 태그 순으로 시도해 찾고(`collector/rss_collector.py`의 `_extract_image_url`), 못 찾으면 NULL — 이 경우 프론트는 이미지 영역 없이 텍스트만 표시한다. **재수집 없이는 기존 데이터에 소급 적용할 수 없다** (RSS 원본을 다시 조회해야만 얻을 수 있는 값이라, 이 컬럼 도입 이전에 수집된 기사는 전부 NULL로 남는다) |
+| category | VARCHAR (nullable) | 기사 카테고리: `MATCH`(경기) / `TRANSFER`(이적) / `PLAYER`(선수 개인 소식) / `OTHER`(리그 전반 이슈 등). `collector/article_classifier.py`가 저장 시점에 규칙 기반으로 채운다 — 이미 `rumor_threads`에 묶인 기사는 최우선으로 `TRANSFER`, 그다음 경기/선수 키워드(`collector/category_keywords.py`), 마지막으로 미클러스터링 이적 키워드(`rumor_clusterer.py`의 스토리 단계 키워드 재사용) 순으로 판정하고 어디에도 안 걸리면 `OTHER`. 이 컬럼 도입 이전에 수집됐거나 아직 소급 배치(`collector/backfill_categories.py`)가 돌지 않은 기사는 NULL일 수 있다 |
 
 기사가 어떤 구단을 다루는지는 `club` 단일 컬럼이 아니라 아래 `article_clubs` 조인 테이블에 다중 값으로 저장한다
 (이적 기사처럼 한 기사가 여러 구단을 언급하는 경우가 흔하기 때문). 어떤 구단도 감지되지 않은 기사(리그 전반 이슈 등)는

@@ -34,10 +34,20 @@ CROSS_VERIFY_MIN_SOURCES = 2
 # "linked"처럼 초기 단계 단어를 함께 쓰는 경우가 있어, 가장 진전된 신호를
 # 우선한다.
 _STAGE_KEYWORDS = [
-    ("OFFICIAL", ["official", "complet", "signs for", "signs a", "unveiled as"]),
-    ("CONFIRMED", ["here we go", "medical", "agreed terms", "agreement reached"]),
-    ("NEGOTIATION", ["bid", "offer", "in talks", "negotiat"]),
-    ("INTEREST", ["linked", "interested in", "keen on", "monitoring"]),
+    ("OFFICIAL", ["official", "complet", "signs for", "signs a", "unveiled as", "confirms move"]),
+    ("CONFIRMED", [
+        "here we go", "medical", "agreed terms", "agreement reached",
+        "verbal agreement", "personal terms",
+    ]),
+    ("NEGOTIATION", [
+        "bid", "offer", "in talks", "talks", "negotiat", "edging closer", "swoop",
+        "green light", "set to sign", "deal off", "close to joining",
+    ]),
+    ("INTEREST", [
+        "linked", "interested in", "keen on", "monitoring", "target", "eyeing",
+        "on radar", "on the radar",
+        "transfer deadline",
+    ]),
 ]
 _STAGE_ORDER = ["UNKNOWN", "INTEREST", "NEGOTIATION", "CONFIRMED", "OFFICIAL"]
 

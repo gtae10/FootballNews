@@ -80,6 +80,19 @@ python build_rumor_threads.py  # rumor_thread_articles에 연결이 없는 기�
 `rumor_thread_articles` 테이블이 생성된 상태여야 하고(`ddl-auto=update`),
 `GET /clubs` 호출이 가능해야 한다(구단 별칭을 선수명 후보 제외 목록에 포함하기 위해).
 
+### 카테고리 소급 분류
+
+```bash
+python backfill_categories.py  # category가 NULL인 기사를 모두 MATCH/TRANSFER/PLAYER/OTHER로 분류
+```
+
+`save_articles()`(db.py)는 신규로 저장되는 기사에만 카테고리 분류를
+적용한다(`article_classifier.py`). 이 스크립트 도입 전 저장된 기사에 소급 적용할
+때 실행한다. `build_rumor_threads.py`를 먼저 실행해 루머 스레드 클러스터링을
+최대한 소급 적용해둔 뒤 이 스크립트를 실행하는 편이 좋다 — TRANSFER 판정의
+최우선 조건이 "이미 rumor_thread_articles에 연결돼 있는가"이기 때문이다. 이미
+category가 채워진 기사는 건드리지 않으므로 여러 번 실행해도 안전하다(idempotent).
+
 ## 파일 구성
 
 - `sources.py`: 수집 대상 소스 목록 (RSS URL, 크롤링 대상 사이트). 등록된 소스와
@@ -112,4 +125,11 @@ python build_rumor_threads.py  # rumor_thread_articles에 연결이 없는 기�
   스토리 단계(INTEREST~OFFICIAL)를 판정하고, 48시간 이내 서로 다른 소스 수로 교차보도
   여부(cross_reported)를 계산하는 로직
 - `build_rumor_threads.py`: 기존 기사에 루머 스레드 클러스터링을 소급 적용하는 1회성 배치
+- `category_keywords.py`: 기사 카테고리(MATCH/PLAYER) 판정에 쓰는 키워드 목록. TRANSFER
+  판정은 별도 목록 없이 rumor_clusterer.py의 이적 스토리 단계 키워드를 재사용한다
+  (article_classifier.py 참고) — 키워드를 튜닝하고 싶으면 이 파일을 수정한다.
+- `article_classifier.py`: 기사를 MATCH/TRANSFER/PLAYER/OTHER로 분류하는 규칙 기반 로직.
+  이미 루머 스레드에 묶인 기사를 최우선으로 TRANSFER 처리하고, 그다음 경기/선수 키워드,
+  마지막으로 미클러스터링 이적 키워드 순으로 판정한다 (우선순위는 파일 상단 주석 참고).
+- `backfill_categories.py`: 기존 기사에 카테고리 분류를 소급 적용하는 1회성 배치
 - `tests/`: 단위/통합 테스트 (외부 네트워크 호출 없이 mock 또는 in-memory DB 사용)

@@ -3,6 +3,7 @@ package com.liverpool.news.service;
 import com.liverpool.news.dto.ArticleDetailResponse;
 import com.liverpool.news.dto.ArticleSummaryResponse;
 import com.liverpool.news.entity.Article;
+import com.liverpool.news.entity.ArticleCategory;
 import com.liverpool.news.entity.Translation;
 import com.liverpool.news.exception.ArticleNotFoundException;
 import com.liverpool.news.repository.ArticleRepository;
@@ -28,13 +29,26 @@ public class ArticleService {
         this.translationRepository = translationRepository;
     }
 
-    public Page<ArticleSummaryResponse> getArticles(Pageable pageable, String club, String keyword) {
-        Page<Article> articles = articleRepository.search(normalize(club), normalize(keyword), pageable);
+    public Page<ArticleSummaryResponse> getArticles(Pageable pageable, String club, String keyword, String category) {
+        Page<Article> articles = articleRepository.search(
+                normalize(club), parseCategory(category), normalize(keyword), pageable);
         return articles.map(this::toSummary);
     }
 
     private String normalize(String value) {
         return (value == null || value.isBlank()) ? null : value;
+    }
+
+    private ArticleCategory parseCategory(String category) {
+        String normalized = normalize(category);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            return ArticleCategory.valueOf(normalized.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("알 수 없는 카테고리입니다: " + category);
+        }
     }
 
     public List<ArticleSummaryResponse> getTopArticles(int limit) {
@@ -61,7 +75,8 @@ public class ArticleService {
                 article.getPublishedAt(),
                 translation != null ? translation.getTranslatedAt() : null,
                 article.getSourceTier(),
-                article.getImageUrl()
+                article.getImageUrl(),
+                article.getCategory() != null ? article.getCategory().name() : null
         );
     }
 
@@ -77,7 +92,8 @@ public class ArticleService {
                 article.getOriginalUrl(),
                 List.copyOf(new TreeSet<>(article.getClubs())),
                 article.getSourceTier(),
-                article.getImageUrl()
+                article.getImageUrl(),
+                article.getCategory() != null ? article.getCategory().name() : null
         );
     }
 }

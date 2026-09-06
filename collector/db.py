@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
+from article_classifier import classify_category
 from club_matcher import build_alias_map, detect_clubs, fetch_clubs
 from player_extractor import build_excluded_names, extract_player_candidates
 from reporter_detector import detect_quoted_reporter, resolve_source_tier
@@ -84,15 +85,32 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
             if article.forced_club:
                 detected_clubs.add(article.forced_club)
 
+            # story_stage가 UNKNOWN이면(이적 관련 키워드가 전혀 없으면) 클러스터링하지 않는다.
+            # 그렇지 않으면 경기 리포트처럼 이적과 무관한 기사도 "같은 선수+구단 언급"이라는
+            # 이유만으로 루머 스레드에 섞여 들어가 교차검증으로 오인될 수 있다. 이 조건을
+            # INSERT 이전에 미리 계산해두면 article_classifier.classify_category()의
+            # "이미 루머 스레드에 묶일 기사인가" 판정에도 그대로 재사용할 수 있다.
+            story_stage = "UNKNOWN"
+            player_candidates: list = []
+            if detected_clubs:
+                story_stage = detect_story_stage(article.title_original, article.content_original)
+                if story_stage != "UNKNOWN":
+                    player_candidates = extract_player_candidates(article.title_original, excluded_names)
+            is_transfer_clustered = bool(detected_clubs) and story_stage != "UNKNOWN" and bool(player_candidates)
+
+            category = classify_category(article.title_original, article.content_original, is_transfer_clustered)
+
             result = connection.execute(
                 text(
                     """
                     INSERT INTO articles
                         (source, original_url, title_original, content_original,
-                         published_at, collected_at, status, source_tier, quoted_reporter, image_url)
+                         published_at, collected_at, status, source_tier, quoted_reporter, image_url,
+                         category)
                     VALUES
                         (:source, :original_url, :title_original, :content_original,
-                         :published_at, :collected_at, 'COLLECTED', :source_tier, :quoted_reporter, :image_url)
+                         :published_at, :collected_at, 'COLLECTED', :source_tier, :quoted_reporter, :image_url,
+                         :category)
                     """
                 ),
                 {
@@ -105,6 +123,7 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     "source_tier": effective_source_tier,
                     "quoted_reporter": quoted_reporter,
                     "image_url": article.image_url,
+                    "category": category,
                 },
             )
             article_id = result.lastrowid
@@ -117,18 +136,11 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     {"article_id": article_id, "club_name": club_name},
                 )
 
-            # story_stage가 UNKNOWN이면(이적 관련 키워드가 전혀 없으면) 클러스터링하지 않는다.
-            # 그렇지 않으면 경기 리포트처럼 이적과 무관한 기사도 "같은 선수+구단 언급"이라는
-            # 이유만으로 루머 스레드에 섞여 들어가 교차검증으로 오인될 수 있다.
-            if detected_clubs:
-                story_stage = detect_story_stage(article.title_original, article.content_original)
-                if story_stage != "UNKNOWN":
-                    player_candidates = extract_player_candidates(article.title_original, excluded_names)
-                    if player_candidates:
-                        cluster_article(
-                            connection, article_id, article.published_at,
-                            player_candidates, detected_clubs, story_stage,
-                        )
+            if is_transfer_clustered:
+                cluster_article(
+                    connection, article_id, article.published_at,
+                    player_candidates, detected_clubs, story_stage,
+                )
 
             saved += 1
 

@@ -11,6 +11,7 @@ public record ArticleSummaryResponse(
         String originalUrl,
         List<String> clubs,
         Integer sourceTier,
-        String imageUrl
+        String imageUrl,
+        String category
 ) {
 }

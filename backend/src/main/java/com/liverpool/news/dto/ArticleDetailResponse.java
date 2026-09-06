@@ -12,6 +12,7 @@ public record ArticleDetailResponse(
         LocalDateTime publishedAt,
         LocalDateTime translatedAt,
         Integer sourceTier,
-        String imageUrl
+        String imageUrl,
+        String category
 ) {
 }

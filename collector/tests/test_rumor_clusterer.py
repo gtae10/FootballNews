@@ -241,3 +241,70 @@ def test_detect_story_stage_prioritizes_more_advanced_stage_when_multiple_presen
     """배경 설명에 초기 단계 단어("linked")가 섞여 있어도 더 진전된 신호를 우선한다."""
     title = "Isak completes move after being linked with Liverpool for months"
     assert detect_story_stage(title, "") == "OFFICIAL"
+
+
+# 2026-09-06 카테고리 분류 키워드 보강 시 실제 DB 샘플에서 찾은 단계 키워드 추가분.
+
+
+def test_detect_story_stage_matches_target_keyword():
+    assert detect_story_stage("Report: Euro giants prepare for exit of Liverpool target", "") == "INTEREST"
+
+
+def test_detect_story_stage_matches_eyeing_keyword():
+    assert detect_story_stage("Liverpool eyeing move for Brazilian winger", "") == "INTEREST"
+
+
+def test_detect_story_stage_matches_on_radar_keyword():
+    assert detect_story_stage("Striker on radar as Liverpool weigh up options", "") == "INTEREST"
+
+
+def test_detect_story_stage_matches_on_the_radar_keyword():
+    """"on radar"만 있으면 실제로 가장 흔한 "on THE radar" 표현을 못 잡는다 — 별도로 검증한다."""
+    assert detect_story_stage("Trent Alexander-Arnold on the radar for Liverpool return", "") == "INTEREST"
+
+
+def test_detect_story_stage_matches_talks_keyword():
+    assert detect_story_stage("Liverpool open talks to sign teenage prospect", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_edging_closer_keyword():
+    assert detect_story_stage("Liverpool's deal for winger is edging closer", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_swoop_keyword():
+    assert detect_story_stage("Liverpool set for swoop for Bundesliga star", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_confirms_move_keyword():
+    assert detect_story_stage("Club confirms move for long-term target", "") == "OFFICIAL"
+
+
+def test_detect_story_stage_matches_verbal_agreement_keyword():
+    assert detect_story_stage("Player reaches verbal agreement over move", "") == "CONFIRMED"
+
+
+def test_detect_story_stage_matches_personal_terms_keyword():
+    assert detect_story_stage("Liverpool agree personal terms with target", "") == "CONFIRMED"
+
+
+# 2026-09-06 재분류 결과를 다시 표본 검토해 찾은 2차 보강분.
+
+
+def test_detect_story_stage_matches_green_light_keyword():
+    assert detect_story_stage("Liverpool given green light to sign wonderkid", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_set_to_sign_keyword():
+    assert detect_story_stage("Journalist confirms Liverpool are set to sign wonderkid", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_deal_off_keyword():
+    assert detect_story_stage("Report - Deal off: Liverpool collapse agreement", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_close_to_joining_keyword():
+    assert detect_story_stage("Winger close to joining Liverpool in January", "") == "NEGOTIATION"
+
+
+def test_detect_story_stage_matches_transfer_deadline_keyword():
+    assert detect_story_stage("Gary Neville urges Iraola to act before transfer deadline", "") == "INTEREST"

@@ -24,7 +24,8 @@ def _make_engine():
                     status TEXT,
                     source_tier INTEGER,
                     quoted_reporter TEXT,
-                    image_url TEXT
+                    image_url TEXT,
+                    category TEXT
                 )
                 """
             )
@@ -281,3 +282,63 @@ def test_save_articles_does_not_create_rumor_thread_when_no_club_detected(mock_a
     with engine.begin() as connection:
         count = connection.execute(text("SELECT COUNT(*) AS cnt FROM rumor_threads")).one()
         assert count.cnt == 0
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_stores_transfer_category_when_clustered(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="The Anfield Wrap",
+        original_url="https://theanfieldwrap.com/article/isak-category",
+        title_original="Liverpool make contact over Alexander Isak",
+        content_original="Liverpool are keen on a deal for the striker.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=2,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT category FROM articles")).one()
+        assert row.category == "TRANSFER"
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_stores_match_category_for_match_report(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/match-report",
+        title_original="Match report: Liverpool 3-1 Arsenal",
+        content_original="Goals from Salah and Nunez sealed the win.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT category FROM articles")).one()
+        assert row.category == "MATCH"
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+def test_save_articles_stores_other_category_when_nothing_matches(mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Football365",
+        original_url="https://www.football365.com/article/broadcast-deal",
+        title_original="Premier League announces new broadcast deal",
+        content_original="The league-wide announcement does not mention any specific club.",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=2,
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT category FROM articles")).one()
+        assert row.category == "OTHER"

@@ -6,6 +6,13 @@ import { isUnauthorized } from "../utils/handleApiError";
 import { tierBadge, timeAgo } from "../utils/articleDisplay";
 import TopArticlesBox from "../components/TopArticlesBox";
 
+const CATEGORY_OPTIONS = [
+  { value: "", label: "전체" },
+  { value: "MATCH", label: "경기" },
+  { value: "TRANSFER", label: "이적" },
+  { value: "PLAYER", label: "선수" },
+];
+
 export default function FeedPage() {
   const navigate = useNavigate();
   const { isGuest } = useAuth();
@@ -15,6 +22,7 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [clubFilter, setClubFilter] = useState(undefined);
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
 
@@ -46,6 +54,7 @@ export default function FeedPage() {
     setError(null);
     const params = new URLSearchParams();
     if (clubFilter) params.set("club", clubFilter);
+    if (categoryFilter) params.set("category", categoryFilter);
     if (keyword) params.set("keyword", keyword);
     const query = params.toString() ? `?${params.toString()}` : "";
 
@@ -59,7 +68,7 @@ export default function FeedPage() {
         setError(err.message);
       })
       .finally(() => setLoading(false));
-  }, [clubFilter, keyword, navigate]);
+  }, [clubFilter, categoryFilter, keyword, navigate]);
 
   function handleSearchSubmit(event) {
     event.preventDefault();
@@ -78,6 +87,21 @@ export default function FeedPage() {
       </div>
 
       <TopArticlesBox />
+
+      <div className="rf-chip-group" style={{ paddingTop: 18 }}>
+        {CATEGORY_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className="rf-chip"
+            data-selected={categoryFilter === option.value ? "true" : "false"}
+            aria-pressed={categoryFilter === option.value}
+            onClick={() => setCategoryFilter(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
 
       <form
         onSubmit={handleSearchSubmit}
