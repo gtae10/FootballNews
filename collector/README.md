@@ -12,14 +12,23 @@ pip install -r requirements.txt --break-system-packages
 cp .env.example .env  # 필요 시 COLLECTOR_DB_URL 조정
 ```
 
-### 일반 실행 (평소 주기 수집 — 최신 기사만)
+### 일반 실행 (평소 주기 수집 + 번역 — 최신 기사만)
 
 ```bash
 python scheduler.py
 ```
 
 30분 간격으로 각 RSS 소스의 최신 페이지(소스당 15~20건)만 조회한다. 아카이브는
-훑지 않으므로 매 실행이 빠르고 요청 수도 적다.
+훑지 않으므로 매 실행이 빠르고 요청 수도 적다. 수집이 끝나면 바로 이어서
+`../translator/translate.py`를 별도 파이썬 프로세스로 실행해 새로 수집된 기사를
+번역한다(`run_collection_and_translation_job`, 2026-09-11 추가) — collector와
+translator는 별도 모듈이라(각자 `db.py`를 따로 관리, 둘 다 이름이 같아 같은
+프로세스로 import하면 충돌함) 같은 프로세스에 합치지 않고 서브프로세스로 분리했다.
+번역 엔진은 `TRANSLATOR_ENGINE` 환경 변수를 따르며, 지정하지 않으면 `openai`가
+기본값이다(이 환경엔 Argos 오프라인 모델이 설치돼 있지 않아 `translate.py` 자체
+기본값인 `argos`로는 실제 번역이 안 됨 — `docs/FEATURE_STATUS.md` 11번 참고). 번역
+배치가 실패해도(네트워크 오류, `OPENAI_API_KEY` 누락 등) 수집 스케줄러 자체는
+멈추지 않고 다음 30분 주기에 재시도된다.
 
 ### 백필 실행 (과거 기사 수집 — 필요할 때만 수동 실행)
 
@@ -93,6 +102,22 @@ python backfill_categories.py  # category가 NULL인 기사를 모두 MATCH/TRAN
 최우선 조건이 "이미 rumor_thread_articles에 연결돼 있는가"이기 때문이다. 이미
 category가 채워진 기사는 건드리지 않으므로 여러 번 실행해도 안전하다(idempotent).
 
+### 본문 이미지 소급 크롤링
+
+```bash
+python backfill_article_images.py           # article_images에 row가 없는 기사를 모두 크롤링
+python backfill_article_images.py --limit 50 # 앞 50건만 처리 (테스트용)
+```
+
+`save_articles()`(db.py)는 신규로 저장되는 기사에만 본문 이미지 크롤링을
+적용한다(`body_image_extractor.py`). 이 기능 도입 전 저장된 기사는 `article_images`에
+아무 row도 없으므로, 이 스크립트로 소급 크롤링한다. 기사 하나를 처리할 때마다 원문
+서버에 요청을 보내므로 `db.BODY_IMAGE_REQUEST_DELAY_SECONDS`(1초)만큼 지연하고,
+기사 하나가 끝날 때마다 즉시 커밋한다 — 중간에 중단해도 이미 처리한 결과는 남고
+재실행하면 이어서 처리된다. 다만 "크롤링했지만 이미지를 못 찾음"과 "아직 시도
+안 함"을 구분하지 못해(둘 다 row 0개) 재실행 시 못 찾았던 기사도 다시 시도하므로,
+소스에 반복 요청을 보내게 된다는 점을 감안해 필요할 때만 실행한다.
+
 ## 파일 구성
 
 - `sources.py`: 수집 대상 소스 목록 (RSS URL, 크롤링 대상 사이트). 등록된 소스와
@@ -112,8 +137,14 @@ category가 채워진 기사는 건드리지 않으므로 여러 번 실행해�
   페이지네이션으로 과거 기사까지 수집 가능하므로 실제 사용되지는 않는다)
 - `scheduler.py`: 주기적 실행 스케줄러 (30분 간격, 최신 페이지만 조회)
 - `backfill.py`: 과거 기사 백필 1회성 스크립트 (소스당 여러 페이지 순회, 요청 간 지연 포함)
-- `db.py`: 수집한 기사를 `articles`/`article_clubs` 테이블에 저장 (원문 URL 기준 중복
-  제거, 구단 자동 태깅과 기자 인용 감지를 저장 직전에 적용)
+- `body_image_extractor.py`: 기사 원문 페이지를 요청해 본문 영역(`<article>` 등) 안의
+  이미지 URL을 추가로 추출하는 로직. 광고/공유버튼/아바타/로고 등은 클래스명·URL
+  패턴으로 제외하는 휴리스틱이라 완벽하지 않을 수 있다. 크롤링이 실패하면(네트워크
+  오류, 소스가 사실상 크롤링을 막는 경우 등) 빈 리스트를 반환해 기존 대표 이미지
+  하나만 남기는 폴백으로 자연스럽게 이어진다.
+- `db.py`: 수집한 기사를 `articles`/`article_clubs`/`article_images` 테이블에 저장
+  (원문 URL 기준 중복 제거, 구단 자동 태깅·기자 인용 감지·본문 이미지 크롤링을
+  저장 직전에 적용)
 - `retag_articles.py`: article_clubs에 태그가 없는 기존 기사에 club_matcher를 소급
   적용하는 1회성 배치 (신규 저장 시에만 적용되는 구단 태깅의 공백을 메운다)
 - `retag_reporters.py`: quoted_reporter가 비어 있는 기존 기사에 기자 인용 감지를
@@ -132,4 +163,5 @@ category가 채워진 기사는 건드리지 않으므로 여러 번 실행해�
   이미 루머 스레드에 묶인 기사를 최우선으로 TRANSFER 처리하고, 그다음 경기/선수 키워드,
   마지막으로 미클러스터링 이적 키워드 순으로 판정한다 (우선순위는 파일 상단 주석 참고).
 - `backfill_categories.py`: 기존 기사에 카테고리 분류를 소급 적용하는 1회성 배치
+- `backfill_article_images.py`: 기존 기사에 본문 이미지 크롤링을 소급 적용하는 1회성 배치
 - `tests/`: 단위/통합 테스트 (외부 네트워크 호출 없이 mock 또는 in-memory DB 사용)

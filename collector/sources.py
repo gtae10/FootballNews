@@ -34,6 +34,24 @@
   Claude-Web 등을 `Disallow: /`로 차단), Liverpool Echo(robots.txt에 ClaudeBot/
   anthropic-ai/Claude-Web/GPTBot 각각 `Disallow: /`). 다섯 곳 모두 애매한 판단 없이
   명확한 차단 근거가 있어 추가하지 않았다.
+- 2026-09-11 추가 조사 후보 7곳: GiveMeSport, TeamTalk, football.london, Mirror
+  Football, CaughtOffside, FootballTransfers.com, PlanetFootball. 결과:
+  - **추가함**: TeamTalk(`teamtalk.com/rss`가 실제 RSS 응답, robots.txt에 AI 봇
+    차단 없음 — 오히려 채널 설명에 "더 맞춤화된 RSS가 필요하면 요청하라"고 적어
+    RSS 재배포를 전제하고 있음), PlanetFootball(`planetfootball.com/feed/`가
+    표준 워드프레스 RSS, robots.txt에 AI 봇 차단 없음. 모기업 PlanetSport의
+    robots.txt도 동일하게 깨끗함을 확인)
+  - **제외함**: GiveMeSport(robots.txt 최상단에 AI/ML 학습·파인튜닝·임베딩·RAG용
+    사용을 명시적으로 전면 금지하는 문구 + anthropic-ai/Claude-Web/ClaudeBot을
+    `Disallow: /`로 개별 차단), football.london과 Mirror Football(둘 다 Reach plc
+    소유 — 이미 제외한 Metro/Liverpool Echo와 동일한 robots.txt 템플릿으로
+    ClaudeBot/anthropic-ai/Claude-Web을 `Disallow: /`로 차단), CaughtOffside
+    (robots.txt가 `m4ow.uk/socw/2.txt`를 링크 — Football Italia와 똑같은 "Search
+    Only Terms Contract"로, AI 시스템의 데이터셋 구축·파운데이션 모델 학습 목적
+    접근을 전면 금지), FootballTransfers.com(robots.txt 자체엔 AI 봇 차단이 없지만,
+    `/rss`·`/en/feed` 둘 다 실제로는 RSS가 아니라 그냥 SPA 홈페이지 HTML을 그대로
+    반환함 — 확인 가능한 RSS 피드가 아예 존재하지 않아 robots.txt 판단 이전에
+    기술적으로 등록 불가)
 
 source_tier: 낮을수록 신뢰도가 높다고 간주한다 (1=공식/대형 매체, 2=자체 취재를 하는
 전문 매체, 3=팬 블로그 성격의 매체). "오늘의 주요 소식" 정렬에 사용된다.
@@ -79,6 +97,18 @@ RSS_SOURCES = [
     {
         "name": "90min",
         "rss_url": "https://www.90min.com/feed",
+        "forced_club": None,
+        "source_tier": 2,
+    },
+    {
+        "name": "TeamTalk",
+        "rss_url": "https://www.teamtalk.com/rss",
+        "forced_club": None,
+        "source_tier": 2,
+    },
+    {
+        "name": "Planet Football",
+        "rss_url": "https://www.planetfootball.com/feed/",
         "forced_club": None,
         "source_tier": 2,
     },
