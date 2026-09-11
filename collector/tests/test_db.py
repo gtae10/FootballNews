@@ -1,10 +1,23 @@
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
 from sqlalchemy import create_engine, text
 
 from db import save_articles
 from rss_collector import CollectedArticle
+
+
+# save_articles()는 기사마다 원문 페이지를 크롤링해 본문 이미지를 찾는다
+# (body_image_extractor.fetch_body_images). DB 저장 로직만 검증하는 이 파일의
+# 대부분의 테스트는 실제 네트워크 호출이나 지연(BODY_IMAGE_REQUEST_DELAY_SECONDS)
+# 없이 결정적으로 빠르게 동작해야 하므로, 기본값으로 빈 리스트를 반환하도록
+# 자동 패치한다. 이미지 저장 자체를 검증하는 테스트는 이 패치를 개별적으로
+# 덮어쓴다(@patch("db.fetch_body_images", ...)가 더 안쪽에서 적용되어 우선한다).
+@pytest.fixture(autouse=True)
+def _no_network_body_image_crawl():
+    with patch("db.fetch_body_images", return_value=[]), patch("db.time.sleep"):
+        yield
 
 
 def _make_engine():
@@ -65,6 +78,18 @@ def _make_engine():
                     rumor_thread_id INTEGER,
                     article_id INTEGER,
                     story_stage TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE article_images (
+                    article_id INTEGER,
+                    position INTEGER,
+                    image_url TEXT,
+                    PRIMARY KEY (article_id, position)
                 )
                 """
             )
@@ -342,3 +367,65 @@ def test_save_articles_stores_other_category_when_nothing_matches(mock_alias_map
     with engine.begin() as connection:
         row = connection.execute(text("SELECT category FROM articles")).one()
         assert row.category == "OTHER"
+
+
+def _image_urls(connection, article_id):
+    rows = connection.execute(
+        text("SELECT image_url FROM article_images WHERE article_id = :id ORDER BY position"),
+        {"id": article_id},
+    ).all()
+    return [row.image_url for row in rows]
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+@patch("db.fetch_body_images", return_value=["https://example.com/body1.jpg", "https://example.com/body2.jpg"])
+def test_save_articles_stores_crawled_body_images_in_order(mock_fetch, mock_alias_map):
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="The Anfield Wrap",
+        original_url="https://theanfieldwrap.com/article/with-body-images",
+        title_original="Test Title",
+        content_original="Test Summary",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=2,
+        image_url="https://theanfieldwrap.com/thumb.jpg",
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        article_id = connection.execute(text("SELECT id FROM articles")).one().id
+        assert _image_urls(connection, article_id) == [
+            "https://example.com/body1.jpg",
+            "https://example.com/body2.jpg",
+        ]
+    mock_fetch.assert_called_once_with(
+        "https://theanfieldwrap.com/article/with-body-images",
+        exclude_url="https://theanfieldwrap.com/thumb.jpg",
+    )
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+@patch("db.fetch_body_images", return_value=[])
+def test_save_articles_stores_no_body_images_when_crawl_fails_or_finds_none(mock_fetch, mock_alias_map):
+    """본문 크롤링이 실패하거나 이미지를 못 찾으면 article_images에 아무 row도 남기지
+    않는다 — 프론트는 기존 대표 이미지(image_url) 하나만 표시하는 상태로 자연스럽게
+    폴백한다."""
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/no-body-images",
+        title_original="Test Title",
+        content_original="Test Summary",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+        image_url="https://www.skysports.com/thumb.jpg",
+    )
+
+    save_articles(engine, [article])
+
+    with engine.begin() as connection:
+        article_id = connection.execute(text("SELECT id FROM articles")).one().id
+        assert _image_urls(connection, article_id) == []

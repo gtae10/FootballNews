@@ -13,6 +13,33 @@ export function tierBadge(sourceTier) {
   return TIER_BADGES[num];
 }
 
+// 상세 페이지 본문(contentKo)을 문단 단위로 쪼갠다. 번역 결과는 대부분 줄바꿈 없이
+// 3~5문장이 한 덩어리로 이어지는 요약문이라(translator/openai_engine.py 참고), 문단
+// 사이에 이미지를 자연스럽게 끼워 넣으려면 문장 단위로 나눠 임의로 문단을 만들어야
+// 한다. 이미 줄바꿈이 있는 본문(과거 다른 엔진 출력 등)은 그 줄바꿈을 그대로 문단
+// 경계로 쓴다.
+export function splitIntoParagraphs(text) {
+  if (!text) return [];
+
+  const byNewline = text
+    .split(/\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (byNewline.length > 1) return byNewline;
+
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [text];
+  const paragraphs = [];
+  for (let i = 0; i < sentences.length; i += 2) {
+    const chunk = sentences
+      .slice(i, i + 2)
+      .map((s) => s.trim())
+      .join(" ")
+      .trim();
+    if (chunk) paragraphs.push(chunk);
+  }
+  return paragraphs;
+}
+
 export function timeAgo(iso) {
   if (!iso) return "";
   const date = new Date(iso);

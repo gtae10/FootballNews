@@ -29,14 +29,29 @@ public class ArticleService {
         this.translationRepository = translationRepository;
     }
 
-    public Page<ArticleSummaryResponse> getArticles(Pageable pageable, String club, String keyword, String category) {
-        Page<Article> articles = articleRepository.search(
-                normalize(club), parseCategory(category), normalize(keyword), pageable);
+    public Page<ArticleSummaryResponse> getArticles(
+            Pageable pageable, String club, List<String> clubs, String keyword, String category) {
+        List<String> normalizedClubs = normalizeList(clubs);
+        Page<Article> articles = normalizedClubs != null
+                ? articleRepository.searchByClubs(
+                        normalizedClubs, parseCategory(category), normalize(keyword), pageable)
+                : articleRepository.search(
+                        normalize(club), parseCategory(category), normalize(keyword), pageable);
         return articles.map(this::toSummary);
     }
 
     private String normalize(String value) {
         return (value == null || value.isBlank()) ? null : value;
+    }
+
+    // "관심구단 전체" 탭에서 넘어오는 구단 목록. 비어 있으면(관심 구단을 아직 하나도
+    // 선택하지 않은 사용자 등) club 단일 필터 경로로 자연스럽게 폴백하도록 null을
+    // 반환한다 — 그렇지 않으면 빈 IN 목록 때문에 결과가 무조건 0건이 된다.
+    private List<String> normalizeList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        return values;
     }
 
     private ArticleCategory parseCategory(String category) {
@@ -76,7 +91,8 @@ public class ArticleService {
                 translation != null ? translation.getTranslatedAt() : null,
                 article.getSourceTier(),
                 article.getImageUrl(),
-                article.getCategory() != null ? article.getCategory().name() : null
+                article.getCategory() != null ? article.getCategory().name() : null,
+                article.getImages()
         );
     }
 

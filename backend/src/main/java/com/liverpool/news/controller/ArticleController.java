@@ -25,11 +25,12 @@ public class ArticleController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String club,
+            @RequestParam(required = false) List<String> clubs,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String keyword
     ) {
         Pageable pageable = PageRequest.of(page, size);
-        return articleService.getArticles(pageable, club, keyword, category);
+        return articleService.getArticles(pageable, club, clubs, keyword, category);
     }
 
     @GetMapping("/top")

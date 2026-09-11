@@ -34,6 +34,32 @@
 
 `(article_id, club_name)` 복합 기본키로 관리한다 (같은 기사에 같은 구단이 중복 태깅되지 않는다).
 
+## article_images
+
+기사 원문 페이지 본문을 크롤링해 추가로 찾은 이미지 URL 목록(`collector/body_image_extractor.py`
+참고). 대표 이미지(`articles.image_url`)와 동일한 원칙으로 이미지 파일 자체는 다운로드/재호스팅하지
+않고 원본 서버 URL만 저장한다.
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| article_id | BIGINT (FK -> articles.id) | 연결된 기사 |
+| position | INT | 원문에 실린 순서(0부터 시작). 백엔드 `Article.images`가 `@OrderColumn`으로 이 컬럼을 관리한다 |
+| image_url | VARCHAR (nullable) | 이미지 URL |
+
+`(article_id, position)` 복합 기본키로 관리한다.
+
+기사를 저장(`collector/db.py`의 `save_articles`)할 때마다 원문 페이지를 한 번 더 요청해 본문
+컨테이너(`<article>`, `.entry-content` 등 널리 쓰이는 셀렉터를 우선순위대로 시도) 안의 `<img>`
+태그를 찾고, 광고/공유버튼/아바타/로고처럼 본문과 무관한 이미지는 클래스명·URL 패턴으로 제외한다
+(완벽하지 않을 수 있는 휴리스틱이다). 이미 대표 이미지로 저장된 URL은 중복 노출을 피하려고
+결과에서 제외하며, 최대 5개까지만 저장한다. **크롤링이 실패하거나(네트워크 오류, 타임아웃, 4xx/5xx,
+소스가 크롤링을 사실상 막는 경우 등) 본문에서 이미지를 하나도 못 찾으면 이 테이블에 아무 row도
+남기지 않는다** — 이 경우 프론트는 대표 이미지(`image_url`) 하나만 표시하는 것으로 폴백한다.
+`articles` 저장마다 원문 서버에 추가 요청을 보내므로, 요청 사이 최소 지연(`db.py`의
+`BODY_IMAGE_REQUEST_DELAY_SECONDS`)을 둔다. **이 기능 도입 이전에 수집된 기사에는 소급 반영되지
+않는다** — `collector/backfill_article_images.py`로 별도 소급 배치를 실행해야 한다(사용법은
+`collector/README.md` 참고).
+
 ## rumor_threads
 
 같은 이적 건(선수 + 구단)으로 묶인 기사들의 스레드. `collector/rumor_clusterer.py`가

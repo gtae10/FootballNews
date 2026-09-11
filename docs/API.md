@@ -12,15 +12,19 @@ GET /articles
 - `page` (기본 0)
 - `size` (기본 20)
 - `club`: 특정 구단 기사만 필터링 (선택, 예: `club=Liverpool`). 기사 하나가 여러 구단을 언급할 수 있어
-  응답의 `clubs`는 배열이지만, 필터 파라미터는 단일 구단명만 받는다 — 그 구단이 `clubs` 배열에 포함된
-  기사가 매칭된다.
+  응답의 `clubs`는 배열이지만, 이 필터 파라미터는 단일 구단명만 받는다 — 그 구단이 `clubs` 배열에
+  포함된 기사가 매칭된다. 프론트의 "전체" 탭 안 보조 필터(개별 구단 드롭다운)가 사용한다.
+- `clubs`: 구단 목록 중 하나라도 겹치는 기사를 모두 반환 (선택, 콤마 구분, 예: `clubs=Liverpool,Arsenal`).
+  프론트의 "관심구단" 탭이 사용자가 팔로우한 구단 전체를 조회할 때 쓴다(`docs/FEATURE_STATUS.md` 참고).
+  `club`과 `clubs`를 동시에 넘기면 `clubs`가 우선한다(둘 다 비어있지 않을 경우). 목록이 비어 있으면
+  아무 필터도 적용되지 않은 것으로 취급한다(빈 IN 목록으로 인해 결과가 0건이 되는 것을 방지).
 - `category`: 카테고리 필터링 (선택, `MATCH`/`TRANSFER`/`PLAYER`/`OTHER` 중 하나, 대소문자 구분 없음).
   `docs/DB_SCHEMA.md`의 `articles.category` 참고. 알 수 없는 값을 넘기면 400을 반환한다.
 - `from`, `to`: 발행일 범위 필터 (선택, 미구현)
 - `keyword`: 제목 검색 (선택, 구현됨). 번역 제목(`titleKo`) 또는 원문 제목(`titleOriginal`) 중
   하나라도 검색어를 포함하면 매칭된다 (대소문자 구분 없음, 부분 일치). 아직 번역되지 않은 기사는
   `titleOriginal` 기준으로만 매칭된다. 본문(`content`)은 검색 대상이 아니다.
-- `club`, `category`, `keyword`를 함께 지정하면 모두 AND 조건으로 적용된다.
+- `club`(또는 `clubs`), `category`, `keyword`를 함께 지정하면 모두 AND 조건으로 적용된다.
 
 응답 예시 (Spring Data `Page` 직렬화 형식 그대로 반환됨. 현재 페이지 인덱스는 `page`가 아니라 `number`)
 ```json
@@ -92,9 +96,19 @@ GET /articles/{id}
   "translatedAt": "2026-08-30T10:05:00Z",
   "sourceTier": 1,
   "imageUrl": "https://source-site.com/images/thumb.jpg",
-  "category": "TRANSFER"
+  "category": "TRANSFER",
+  "images": [
+    "https://source-site.com/images/body1.jpg",
+    "https://source-site.com/images/body2.jpg"
+  ]
 }
 ```
+
+`images`는 원문 기사 페이지 본문을 크롤링해 추가로 찾은 이미지 URL 목록이다(원문에 실린 순서
+그대로, 최대 5개, `collector/body_image_extractor.py` 참고). `imageUrl`과 마찬가지로 이미지
+파일 자체는 저장하지 않고 원본 서버 URL만 담는다. 크롤링이 실패했거나(네트워크 오류, 소스가
+크롤링을 막음 등) 본문에서 이미지를 찾지 못하면 빈 배열(`[]`)이며, 이 경우 프론트엔드는
+`imageUrl` 하나만 대표 이미지로 표시하는 것으로 자연스럽게 폴백해야 한다.
 
 ## 상태 코드
 

@@ -1,6 +1,7 @@
 package com.liverpool.news.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record ArticleDetailResponse(
         Long id,
@@ -13,6 +14,7 @@ public record ArticleDetailResponse(
         LocalDateTime translatedAt,
         Integer sourceTier,
         String imageUrl,
-        String category
+        String category,
+        List<String> images
 ) {
 }

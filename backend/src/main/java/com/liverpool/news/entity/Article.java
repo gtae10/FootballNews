@@ -2,7 +2,9 @@ package com.liverpool.news.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -59,6 +61,16 @@ public class Article {
     @Enumerated(EnumType.STRING)
     @Column(name = "category")
     private ArticleCategory category;
+
+    // 본문 페이지 크롤링으로 추가 수집한 이미지 URL 목록(collector/body_image_extractor.py).
+    // 대표 이미지(imageUrl)와 마찬가지로 파일 자체는 저장/재호스팅하지 않고 원본 서버 URL만
+    // 보관한다. 크롤링이 실패했거나 본문에서 이미지를 못 찾은 기사는 빈 리스트로 남는다 —
+    // 이 경우 프론트는 대표 이미지 하나만 표시하는 것으로 자연스럽게 폴백한다.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "article_images", joinColumns = @JoinColumn(name = "article_id"))
+    @OrderColumn(name = "position")
+    @Column(name = "image_url")
+    private List<String> images = new ArrayList<>();
 
     protected Article() {
     }
@@ -159,6 +171,10 @@ public class Article {
 
     public ArticleCategory getCategory() {
         return category;
+    }
+
+    public List<String> getImages() {
+        return images;
     }
 
     public enum ArticleStatus {

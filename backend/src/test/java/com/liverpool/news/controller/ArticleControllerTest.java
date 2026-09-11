@@ -47,7 +47,7 @@ class ArticleControllerTest {
 
     @Test
     void 기사_목록_조회시_200_응답과_기사_목록을_반환한다() throws Exception {
-        when(articleService.getArticles(any(), isNull(), isNull(), isNull()))
+        when(articleService.getArticles(any(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "리버풀, 다음 시즌 새 유니폼 공개", 1))));
 
         mockMvc.perform(get("/api/v1/articles"))
@@ -58,7 +58,7 @@ class ArticleControllerTest {
 
     @Test
     void club_파라미터로_기사_목록을_필터링한다() throws Exception {
-        when(articleService.getArticles(any(), eq("Liverpool"), isNull(), isNull()))
+        when(articleService.getArticles(any(), eq("Liverpool"), isNull(), isNull(), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "필터링된 기사", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("club", "Liverpool"))
@@ -67,8 +67,18 @@ class ArticleControllerTest {
     }
 
     @Test
+    void clubs_파라미터_콤마구분으로_관심구단_전체_기사_목록을_필터링한다() throws Exception {
+        when(articleService.getArticles(any(), isNull(), eq(List.of("Liverpool", "Arsenal")), isNull(), isNull()))
+                .thenReturn(new PageImpl<>(List.of(summary(1L, "관심구단 기사", 1))));
+
+        mockMvc.perform(get("/api/v1/articles").param("clubs", "Liverpool,Arsenal"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].titleKo").value("관심구단 기사"));
+    }
+
+    @Test
     void keyword_파라미터로_기사_목록을_필터링한다() throws Exception {
-        when(articleService.getArticles(any(), isNull(), eq("유니폼"), isNull()))
+        when(articleService.getArticles(any(), isNull(), isNull(), eq("유니폼"), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "리버풀, 다음 시즌 새 유니폼 공개", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("keyword", "유니폼"))
@@ -78,7 +88,7 @@ class ArticleControllerTest {
 
     @Test
     void club과_keyword를_함께_넘기면_둘_다_서비스로_전달된다() throws Exception {
-        when(articleService.getArticles(any(), eq("Liverpool"), eq("유니폼"), isNull()))
+        when(articleService.getArticles(any(), eq("Liverpool"), isNull(), eq("유니폼"), isNull()))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "리버풀, 다음 시즌 새 유니폼 공개", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("club", "Liverpool").param("keyword", "유니폼"))
@@ -88,7 +98,7 @@ class ArticleControllerTest {
 
     @Test
     void category_파라미터로_기사_목록을_필터링한다() throws Exception {
-        when(articleService.getArticles(any(), isNull(), isNull(), eq("MATCH")))
+        when(articleService.getArticles(any(), isNull(), isNull(), isNull(), eq("MATCH")))
                 .thenReturn(new PageImpl<>(List.of(summary(1L, "경기 기사", 1))));
 
         mockMvc.perform(get("/api/v1/articles").param("category", "MATCH"))

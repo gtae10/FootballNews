@@ -5,6 +5,7 @@ backend(Spring Boot)와 동일한 스키마(`docs/DB_SCHEMA.md` 참고)를 사�
 """
 
 import os
+import time
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -13,12 +14,18 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from article_classifier import classify_category
+from body_image_extractor import fetch_body_images
 from club_matcher import build_alias_map, detect_clubs, fetch_clubs
 from player_extractor import build_excluded_names, extract_player_candidates
 from reporter_detector import detect_quoted_reporter, resolve_source_tier
 from rss_collector import CollectedArticle
 from rumor_clusterer import cluster_article, detect_story_stage
 from trusted_reporters import TRUSTED_REPORTERS
+
+# 기사 원문 페이지에서 본문 이미지를 추가로 크롤링(body_image_extractor.py)할 때,
+# 기사 저장마다 매번 원본 서버에 요청을 보내게 되므로 요청 사이 최소 지연을 둔다.
+# backfill.py의 REQUEST_DELAY_SECONDS와 같은 취지 — 소스에 부담을 주지 않기 위함이다.
+BODY_IMAGE_REQUEST_DELAY_SECONDS = 1.0
 
 # .env가 있으면 그 값을 os.environ에 채워 넣는다. 파일이 없으면 조용히 아무 일도
 # 하지 않고, get_engine()의 DEFAULT_DB_URL 폴백이 그대로 사용된다. 이미 설정된
@@ -47,7 +54,10 @@ def _load_alias_map() -> dict:
     try:
         return build_alias_map(fetch_clubs())
     except Exception as error:  # noqa: BLE001 - 백엔드 연결 실패는 수집 자체를 막지 않는다
-        print(f"GET /clubs 호출 실패 — 구단 자동 태깅을 건너뜁니다: {error}")
+        # Windows 콘솔(cp949)에서 em dash(—)를 인코딩하지 못해 print() 자체가 죽는 것을
+        # 막기 위해 일반 하이픈을 쓴다(2026-09-11, 백엔드 미기동 상태로 백필 실행 중 실제로
+        # UnicodeEncodeError가 발생해 배치 전체가 중단된 것을 확인함).
+        print(f"GET /clubs 호출 실패 - 구단 자동 태깅을 건너뜁니다: {error}")
         return {}
 
 
@@ -141,6 +151,23 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     connection, article_id, article.published_at,
                     player_candidates, detected_clubs, story_stage,
                 )
+
+            # 본문 페이지를 직접 요청해 이미지를 추가로 찾는다. 실패하거나(네트워크
+            # 오류 등) 이미지를 하나도 못 찾으면 빈 리스트가 반환되므로, 이 경우
+            # article_images에는 아무것도 저장되지 않고 기존 대표 이미지(image_url)
+            # 하나만 남는다 — 프론트가 자연스럽게 그 상태로 폴백한다.
+            body_images = fetch_body_images(article.original_url, exclude_url=article.image_url)
+            for position, image_url in enumerate(body_images):
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO article_images (article_id, position, image_url)
+                        VALUES (:article_id, :position, :image_url)
+                        """
+                    ),
+                    {"article_id": article_id, "position": position, "image_url": image_url},
+                )
+            time.sleep(BODY_IMAGE_REQUEST_DELAY_SECONDS)
 
             saved += 1
 
