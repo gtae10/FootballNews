@@ -32,14 +32,15 @@ export default function LoginPage() {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        <div className="rf-wordmark">리버풀 뉴스</div>
+        <div className="rf-wordmark">433</div>
         <h1 style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.25, letterSpacing: "-.02em", margin: 0 }}>
           해외 축구 뉴스를
           <br />
           한국어로, 신뢰도까지
         </h1>
         <p style={{ fontSize: 15, lineHeight: 1.7, color: "var(--rf-muted-1)", maxWidth: 460, margin: 0 }}>
-          전 세계 여러 구단의 원문 기사를 번역해 모아 보고, 출처 신뢰도 등급으로 루머와 사실을 구분합니다.
+          433에서 전 세계 여러 구단의 원문 기사를 번역해 모아 보고, 출처 신뢰도 등급으로 루머와 사실을
+          구분하세요.
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "flex-start" }}>
