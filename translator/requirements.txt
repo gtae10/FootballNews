@@ -8,6 +8,11 @@ anthropic==1.2.0
 # transitive dependency, to prevent a repeat of the past httpx/anthropic mismatch.
 # 현재 기본 엔진이 아니지만(anthropic_engine.py, translate.py의 ENGINE 참고)
 # 나중에 다시 켤 수 있도록 의존성은 유지한다.
+openai==3.8.0
+# openai 3.x도 anthropic과 마찬가지로 httpx2에 의존한다(구버전 openai 1.x는
+# httpx에 의존했는데, httpx 0.28부터 'proxies' 인자가 제거되면서 깨졌다 —
+# 3.x로 올리면서 해결됨). 현재 기본 엔진이 아니지만(openai_engine.py,
+# translate.py의 ENGINE 참고) 나중에 다시 켤 수 있도록 의존성은 유지한다.
 httpx2==2.12.0
 sqlalchemy==2.0.30
 pymysql==1.1.1

@@ -103,11 +103,13 @@
 
 **⚠️ 사실상 비활성화 상태** (엔진 전환 커밋 `90e6233`, `a961c12`, 2026-09-05)
 
-- 코드: `translator/translate.py`의 `ENGINE = "argos"`(기본, 오프라인/무료). Claude(Anthropic) 기반 `anthropic_engine.py`는 삭제하지 않고 그대로 보존(`ENGINE` 값만 바꾸면 전환 가능, `ANTHROPIC_API_KEY` 필요)
+- 코드: `translator/translate.py`의 `ENGINE = "argos"`(기본, 오프라인/무료, `TRANSLATOR_ENGINE` 환경 변수로도 설정 가능). Claude(Anthropic) 기반 `anthropic_engine.py`는 그대로 보존(`ENGINE` 값만 바꾸면 전환 가능, `ANTHROPIC_API_KEY` 필요). 2026-09-07 GPT(OpenAI) 기반 `openai_engine.py`를 세 번째 선택지로 추가(`ENGINE = "openai"`, `OPENAI_API_KEY` 필요, 기본 모델 `gpt-5-mini`). 상용 API 엔진 두 개 모두 개별 기사 번역 실패 시 `TranslationError`/일반 예외를 던지고 `run_translation_batch()`가 잡아 해당 기사만 건너뛰도록(status COLLECTED 유지, 재시도) 처리 추가
 - **비활성화 이유**: 사용자 확인(2026-09-06) — Argos Translate 번역 품질 문제로 번역 기능 자체를 보류한 상태. 자동으로 다시 도는 스케줄/트리거가 있는지 이번에 재확인했고, 없음을 확인함(아래 12번 참고와 별개로 이 기능 자체가 안 켜져 있음)
-- DB: `translations` 테이블 **0건** — 이 환경에서 실제 번역이 단 한 번도 실행된 적 없음을 확인
-- 환경 확인: `argostranslate` 패키지가 이 환경엔 원래 설치돼 있지 않았음(2026-09-07 직접 설치 후 테스트 실행). 설치 후에도 **Argos 오프라인 언어 모델 자체는 설치되어 있지 않음**(`argostranslate.package.get_installed_packages()` → 빈 배열) — 즉 `setup_argos_model.py`가 이 환경에서 실행된 적이 없어서, 지금 당장 `translate.py`를 돌려도 실제 번역은 실패함
-- 테스트: `translator/tests/` 48개 — `argostranslate` 설치 후 전부 통과(단, 이 테스트들은 mock 기반 단위 테스트이고 실제 모델 다운로드/번역 성공을 검증하지 않음)
+- DB: `translations` 테이블 **477건 (전체 완료)**. 2026-09-07 3건 라이브 검증 후 나머지 474건에 대해 `TRANSLATOR_ENGINE=openai`로 전체 배치를 백그라운드 실행 → 2026-09-08 사용자 요청으로 399건에서 중간 정지 → 2026-09-11 남은 78건에 대해 배치를 재개해 완료(`run_translation_batch()` 반환값 78, 실패 0건). `articles.status='COLLECTED'`(미번역) 0건 확인 — 전체 477건 번역 완료 상태
+- 환경 확인: `argostranslate` 패키지가 이 환경엔 원래 설치돼 있지 않았음(2026-09-07 직접 설치 후 테스트 실행). 설치 후에도 **Argos 오프라인 언어 모델 자체는 설치되어 있지 않음**(`argostranslate.package.get_installed_packages()` → 빈 배열) — 즉 `setup_argos_model.py`가 이 환경에서 실행된 적이 없어서, `ENGINE="argos"`(현재 기본값)로 지금 당장 `translate.py`를 돌리면 실제 번역은 실패함. `ENGINE="openai"`(아래 참고)는 실제로 성공 확인됨
+- OpenAI 엔진 라이브 검증(2026-09-07): DB에서 실제 `COLLECTED` 기사 3건(id 1/2/3, The Anfield Wrap 팟캐스트 요약 기사)을 뽑아 `translate.ENGINE="openai"`로 `translate_article()` → `db.save_translation()`까지 실제로 실행. **3건 모두 성공**, `model_version="gpt-5-mini"`로 저장됨. (첫 시도는 `.env`의 `OPENAI_API_KEY`에 예전 Anthropic 키가 잘못 들어있어 401로 3건 모두 실패했었고, 사용자가 키를 수정한 뒤 재시도해 성공함)
+  - 품질 주관 평가: 3~5문장 요약이 자연스럽고 사실관계(인명 Neil Atkinson/Andoni Iraola, 스코어 "리버풀 2-2 노팅엄 포레스트" 등) 정확하게 유지됨. 원문을 그대로 베끼지 않고 재구성된 요약이라 저작권 규칙에도 부합. Argos(직역투, 요약 없음)보다 자연스럽고, 기존 Claude(claude-opus-5) 엔진과 비슷한 구조의 요약형 출력을 냄(직접 비교 실행은 안 함). 다만 사람 이름 표기 하나("Rob Gutmann"→"롭 굿맨")가 일반적인 표기("구트만" 등)와 다르게 음역된 사례가 있어, 고유명사 표기 정확성은 대량 실행 전 추가 표본 검토가 필요해 보임
+- 테스트: `translator/tests/` 59개(anthropic 3 + argos 4 + openai 9 신규 포함) — `argostranslate`/`openai` 설치 후 전부 통과(단, 이 테스트들은 mock 기반 단위 테스트이고, 실제 API 성공 여부는 위 라이브 검증으로 별도 확인함)
 
 ### 12. translator 자동 실행 여부 (참고 — 배치 자동화)
 
@@ -158,5 +160,5 @@
 | rumor_thread_articles | 21건 |
 | users | 1건 |
 | user_preferences | 1건 (favorite_club_id 설정 0건) |
-| translations | 0건 |
+| translations | 477건 (전체 완료, 2026-09-11 — 위 11번 참고) |
 | clubs | 50건 |

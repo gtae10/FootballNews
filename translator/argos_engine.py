@@ -5,13 +5,13 @@
 언어 모델을 최초 1회만 내려받으면(`setup_argos_model.py`) 이후로는 완전히
 오프라인·무료로 번역한다.
 
-품질에 대한 솔직한 트레이드오프: Claude 같은 LLM 기반 번역(anthropic_engine.py)에
-비해 문장이 직역투이고, 축구 특유의 관용구·약어는 어색하게 옮겨지거나 아예
-번역되지 않고 영문 그대로 남는 경우가 있다. 후자는 glossary.apply_glossary()로
-일부 보정한다. 번역 품질이 더 중요해지면 translate.py의 ENGINE 값만 바꿔
-anthropic_engine.py(또는 그때 새로 붙일 파파고/DeepL 엔진)로 교체할 수 있도록
-이 모듈은 "제목/본문 문자열을 받아 번역 결과 문자열을 반환"하는 좁은 인터페이스만
-제공한다.
+품질에 대한 솔직한 트레이드오프: Claude/GPT 같은 LLM 기반 번역(anthropic_engine.py,
+openai_engine.py)에 비해 문장이 직역투이고, 축구 특유의 관용구·약어는 어색하게
+옮겨지거나 아예 번역되지 않고 영문 그대로 남는 경우가 있다. 후자는
+glossary.apply_glossary()로 일부 보정한다. 번역 품질이 더 중요해지면
+translate.py의 ENGINE 값만 바꿔 anthropic_engine.py/openai_engine.py(또는
+그때 새로 붙일 파파고/DeepL 엔진)로 교체할 수 있도록 이 모듈은 "제목/본문
+문자열을 받아 번역 결과 문자열을 반환"하는 좁은 인터페이스만 제공한다.
 """
 
 from typing import Tuple

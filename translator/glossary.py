@@ -2,7 +2,7 @@
 
 두 가지 방식으로 쓰인다:
 - `build_glossary_prompt()`: LLM 프롬프트에 포함시켜 번역 시점에 용어를 통일시킨다
-  (anthropic_engine.py처럼 시스템 프롬프트를 지원하는 엔진에서 사용).
+  (anthropic_engine.py/openai_engine.py처럼 시스템 프롬프트를 지원하는 엔진에서 사용).
 - `apply_glossary()`: 번역이 끝난 결과 텍스트에 후처리로 용어를 치환한다. Argos
   Translate 같은 NMT 엔진은 프롬프트 개념이 없어 번역 도중에 용어를 지시할 수
   없으므로, 번역 후 원문에 남아있는 영문 용어(NMT가 통째로 못 옮기고 그대로 둔

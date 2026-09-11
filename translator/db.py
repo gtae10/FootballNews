@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-# .env가 있으면 그 값을 os.environ에 채워 넣는다 (TRANSLATOR_DB_URL, ANTHROPIC_API_KEY 등).
+# .env가 있으면 그 값을 os.environ에 채워 넣는다
+# (TRANSLATOR_DB_URL, ANTHROPIC_API_KEY, OPENAI_API_KEY 등).
 # translate.py가 이 모듈을 최상단에서 import하므로 여기서 한 번만 로드하면 된다.
 # 파일이 없으면 조용히 아무 일도 하지 않고, get_engine()의 DEFAULT_DB_URL 폴백이
 # 그대로 사용된다. 이미 설정된 실제 환경 변수는 덮어쓰지 않는다.

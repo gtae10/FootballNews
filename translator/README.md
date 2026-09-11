@@ -3,8 +3,9 @@
 수집된 기사를 한국어로 번역하는 모듈입니다. 기본 엔진은 **Argos Translate**
 (오픈소스, 오프라인, 무료)입니다 — 파파고/구글/DeepL은 전부 카드(결제 수단)
 등록이 있어야 API 키를 받을 수 있어서, 카드 등록 없이 바로 쓸 수 있는 대안으로
-도입했습니다. Claude(Anthropic API) 기반 엔진도 코드는 그대로 남아 있어
-(`anthropic_engine.py`) 나중에 다시 켤 수 있습니다.
+도입했습니다. Claude(Anthropic API) 기반 엔진(`anthropic_engine.py`)과
+GPT(OpenAI API) 기반 엔진(`openai_engine.py`)도 코드는 그대로 남아 있어
+나중에 다시 켤 수 있습니다.
 
 ## 실행 방법
 
@@ -74,10 +75,17 @@ collector와 동일한 `articles`/`translations` 테이블 스키마를 사용�
 - `anthropic_engine.py`: Claude(Anthropic API) 엔진. 현재 비활성 상태지만 완전히
   삭제하지 않고 보존했다. `translate.py`의 `ENGINE = "anthropic"`으로 바꾸면
   다시 쓸 수 있다(`ANTHROPIC_API_KEY` 필요).
-- `translate.py`의 `ENGINE` 상수만 바꾸면 어느 쪽을 쓸지 전환된다. 나중에
-  파파고/DeepL 등 다른 상용 API로 교체하고 싶으면 같은 인터페이스
-  (`translate(title, content) -> (title_ko, content_ko, model_version)`)로 새
-  엔진 모듈을 하나 추가하면 된다.
+- `openai_engine.py`: GPT(OpenAI API) 엔진. 마찬가지로 현재 비활성 상태로
+  보존했다. `translate.py`의 `ENGINE = "openai"`로 바꾸면 다시 쓸 수 있다
+  (`OPENAI_API_KEY` 필요). 기본 모델은 비용 효율을 고려해 `gpt-5-mini`로
+  설정했다. 인증 실패/rate limit/빈 응답/JSON 파싱 실패는 모두
+  `openai_engine.TranslationError`로 통일해서 던지며, `translate.py`의
+  `run_translation_batch()`가 이를 잡아 해당 기사만 건너뛰고(status는
+  COLLECTED로 유지, 다음 배치에서 재시도) 나머지 기사는 계속 처리한다.
+- `translate.py`의 `ENGINE` 상수(또는 `TRANSLATOR_ENGINE` 환경 변수)만 바꾸면
+  어느 쪽을 쓸지 전환된다. 나중에 파파고/DeepL 등 다른 상용 API로 교체하고
+  싶으면 같은 인터페이스(`translate(title, content) -> (title_ko, content_ko,
+  model_version)`)로 새 엔진 모듈을 하나 추가하면 된다.
 
 ## 번역 품질에 대한 솔직한 평가
 
@@ -115,6 +123,7 @@ Argos Translate는 문장 단위 신경망 번역(NMT)이라 Claude 같은 LLM �
 - `translate.py`: 미번역 기사를 조회해 번역하는 메인 로직 (엔진 선택 + DB 배치 처리)
 - `argos_engine.py`: Argos Translate 기반 번역 엔진 (기본)
 - `anthropic_engine.py`: Claude(Anthropic API) 기반 번역 엔진 (현재 비활성, 보존용)
+- `openai_engine.py`: GPT(OpenAI API) 기반 번역 엔진 (현재 비활성, 보존용)
 - `setup_argos_model.py`: en->ko Argos Translate 모델을 다운로드/설치하는 1회성 스크립트
 - `html_cleanup.py`: 번역 직전에 RSS 원문의 HTML 태그/엔티티/워드프레스 푸터를 정리
 - `preprocessing.py`: RSS 잡음 제거(`remove_noise`)와 긴 문장 분할
@@ -125,4 +134,4 @@ Argos Translate는 문장 단위 신경망 번역(NMT)이라 Claude 같은 LLM �
   번역 결과 후처리 치환(`apply_glossary`), 확인된 오역 패턴 교정
   (`KOREAN_MISTRANSLATION_FIXES`) 세 가지를 제공한다
 - `db.py`: 미번역 기사 조회 및 번역 결과 저장 (backend와 동일한 DB 스키마 사용)
-- `tests/`: 단위/통합 테스트 (Argos/Claude 호출 모두 mock 처리, DB 로직은 in-memory DB로 검증)
+- `tests/`: 단위/통합 테스트 (Argos/Claude/GPT 호출 모두 mock 처리, DB 로직은 in-memory DB로 검증)
