@@ -2,11 +2,11 @@
 
 이 문서는 코드/DB/테스트를 실제로 대조해 확인한 "사실"만 기록합니다. 추측이나 계획은 넣지 않습니다.
 
-**확인 시점**: 2026-09-07. **확인 방법**: git 커밋 로그, 로컬 MySQL80(`footballnews` DB) 직접 조회, 각 모듈 테스트 스위트 실행(백엔드 `./gradlew test`, collector/translator `pytest`, 프론트 `vitest run`), 일부는 실제로 서버를 띄워 브라우저로 확인.
+**확인 시점**: 2026-09-11 (최초 작성 2026-09-07). **확인 방법**: git 커밋 로그, 로컬 MySQL80(`footballnews` DB) 직접 조회, 각 모듈 테스트 스위트 실행(백엔드 `./gradlew test`, collector/translator `pytest`, 프론트 `vitest run`), 일부는 실제로 서버를 띄워 브라우저로 확인.
 
 **새 세션을 시작하기 전에 이 문서를 먼저 읽으세요.**
 
-> **갱신 이력**: 2026-09-07 최초 작성 시점엔 최애팀/카테고리 분류가 미커밋 상태였으나, 같은 날 커밋 `d362233`(카테고리 분류), `93ee6ca`(최애팀), `c89dbde`(이 문서 자체)로 커밋 완료됨. 아래 4/8번 항목은 이 커밋 반영 후 내용임.
+> **갱신 이력**: 2026-09-07 최초 작성 시점엔 최애팀/카테고리 분류가 미커밋 상태였으나, 같은 날 커밋 `d362233`(카테고리 분류), `93ee6ca`(최애팀), `c89dbde`(이 문서 자체)로 커밋 완료됨. 아래 4/8번 항목은 이 커밋 반영 후 내용임. 2026-09-11 세션에서 번역 배치 재개 완료(11번), 기사 수집량 확대(14번, 신규), 상세 페이지 본문 이미지(15번, 신규)를 추가했고, 그 세션 작업분은 미커밋 상태로 남아있었음. 2026-09-12 세션에서 전체 테스트 재확인(백엔드 54개/collector 155개/프론트 50개, 전부 통과) 후 커밋 완료: `a1b9d05`("433" 리브랜딩), `31e82c5`(12번 스케줄러 자동연결), `92dd94d`(14번 소스 확대), `d26e2b9`(15번 본문 이미지). 아래 12/14/15번 항목의 "미커밋" 표기는 이 커밋 반영 후 내용으로 갱신함.
 
 ---
 
@@ -113,12 +113,13 @@
 
 ### 12. translator 자동 실행 여부 (참고 — 배치 자동화)
 
-**❌ 미구현(연결 안 됨)** — 이건 "기능"이 아니라 "자동화가 없다"는 사실 확인
+**✅ 완료** (커밋 `31e82c5`, 2026-09-12 — 작업 자체는 2026-09-11) — 2026-09-06/07 확인 시점엔 "자동화가 없다"였으나, 2026-09-11 세션에서 연결함
 
-- `collector/scheduler.py`는 `run_collection_job`(RSS 수집)만 30분 간격으로 스케줄링하며 `translator/` 모듈은 어디서도 import/호출하지 않음
-- Windows 작업 스케줄러에 관련 등록 작업 없음, cron/`.bat`/`.ps1`/CI 워크플로우 어디에도 자동 실행 경로 없음
-- `translate.py`의 `run_translation_batch()`는 `if __name__ == "__main__":` 안에만 있어 직접 실행하지 않는 한 동작하지 않음
-- 확인일: 2026-09-06, 2026-09-07 두 차례 재확인
+- 코드: `collector/scheduler.py`의 `run_collection_and_translation_job()`이 `run_collection_job()`(RSS 수집) 직후 `run_translation_job()`을 이어서 실행하도록 변경(30분 간격 스케줄에 그대로 적용됨, 시작 시 1회 즉시 실행도 포함). collector와 translator는 별도 모듈이라(각자 `db.py`를 따로 관리, 이름이 같아 같은 프로세스로 import하면 충돌) 같은 프로세스로 합치지 않고 `subprocess.run(["python", "translate.py"], cwd=translator/)`로 분리 실행
+- 번역 엔진: `TRANSLATOR_ENGINE` 환경 변수를 따르며 지정 없으면 `openai` 기본값(이 환경엔 Argos 오프라인 모델 미설치 — 11번 참고). 실패해도(네트워크 오류, API 키 누락 등) 예외를 던지지 않아 수집 스케줄러 자체는 멈추지 않고 다음 30분 주기에 재시도됨
+- Windows 작업 스케줄러/cron 등록은 여전히 없음 — `python scheduler.py`를 직접 실행 중인 동안에만 동작한다(그 프로세스가 살아있는 동안 30분 간격 반복). 서버 재부팅 시 자동 시작되지 않으므로, 정말 상시 자동화하려면 별도로 Windows 작업 스케줄러/서비스 등록이 필요함(아직 안 함)
+- 테스트: `collector/tests/test_scheduler.py`에 `run_translation_job`/`run_collection_and_translation_job` 관련 5개 추가(서브프로세스 호출은 mock 처리, 실제 실행은 안 함) — 전부 통과
+- 확인일: 2026-09-11
 
 ### 13. collector 소스 목록 (RSS)
 
@@ -133,32 +134,55 @@
 | Independent Football | 1 | (자동 감지) | |
 | Football365 | 2 | (자동 감지) | |
 | 90min | 2 | (자동 감지) | RSS 항목이 항상 발행일순은 아님(`sources.py` 주석) |
+| TeamTalk | 2 | (자동 감지) | 2026-09-11 추가. `teamtalk.com/rss` 실제 RSS 확인, robots.txt에 AI 봇 차단 없음 |
+| Planet Football | 2 | (자동 감지) | 2026-09-11 추가. `planetfootball.com/feed/` 표준 워드프레스 RSS, robots.txt에 AI 봇 차단 없음 |
 
-`source_tier`: 1=공식/대형 매체, 2=자체 취재하는 전문 매체, 3=팬 블로그 성격. robots.txt/AI 크롤러 차단 문구를 확인 후 제외한 후보(BBC, Guardian, ESPN, Marca, Football Italia, talkSPORT, Metro, Liverpool Echo)도 `sources.py` 주석에 근거와 함께 기록되어 있음.
+`source_tier`: 1=공식/대형 매체, 2=자체 취재하는 전문 매체, 3=팬 블로그 성격. robots.txt/AI 크롤러 차단 문구를 확인 후 제외한 후보(BBC, Guardian, ESPN, Marca, Football Italia, talkSPORT, Metro, Liverpool Echo — 2026-09-04 조사/ GiveMeSport, football.london, Mirror Football, CaughtOffside, FootballTransfers.com — 2026-09-11 조사)도 `sources.py` 주석에 근거와 함께 기록되어 있음.
+
+### 14. 기사 수집량 확대 (백필 페이지 확장 + 신규 소스)
+
+**✅ 완료** (커밋 `92dd94d`, 2026-09-12 — 작업 자체는 2026-09-11)
+
+- 작업: `collector/backfill.py --pages 8`를 소스 9곳 전체(기존 7곳 + 신규 2곳)로 실행해 과거 아카이브를 더 깊이 수집. `REQUEST_DELAY_SECONDS`(1.5초)는 그대로 유지
+- 신규 소스 조사(2026-09-11, 후보 7곳: GiveMeSport/TeamTalk/football.london/Mirror Football/CaughtOffside/FootballTransfers.com/PlanetFootball) — **추가**: TeamTalk, PlanetFootball(둘 다 실제 RSS 확인 + robots.txt에 AI 봇 차단 문구 없음). **제외**: GiveMeSport(robots.txt가 AI 학습/RAG용 사용을 명시적으로 전면 금지 + anthropic-ai/ClaudeBot 개별 차단), football.london·Mirror Football(Reach plc 소유, 이미 제외한 Metro/Liverpool Echo와 동일하게 ClaudeBot/anthropic-ai를 `Disallow: /`), CaughtOffside(robots.txt가 링크하는 `m4ow.uk/socw/2.txt`가 Football Italia와 동일한 "Search Only Terms Contract"로 AI 데이터셋 구축을 전면 금지), FootballTransfers.com(`/rss`·`/en/feed`가 실제로는 RSS가 아니라 SPA 홈페이지 HTML을 그대로 반환 — RSS 자체가 존재하지 않아 기술적으로 등록 불가). 근거 상세는 `collector/sources.py` 주석 참고
+- DB 반영: 백필 전 477건 → 백필 후 **847건**(신규 370건, 원문 수집 시점 raw 항목 1577건 중복 제외). 소스별 분포는 위 13번 표 및 아래 DB 스냅샷 참고
+- 테스트: 별도 테스트 파일 없음(기존 `backfill_categories.py` 등 다른 1회성 배치 스크립트와 동일한 컨벤션) — `max_pages`/`delay_seconds` 페이지네이션 로직 자체는 `collector/tests/test_rss_collector.py`가 이미 검증
+
+### 15. 상세 페이지 본문 이미지 (크롤링 + 표시)
+
+**✅ 완료** (커밋 `d26e2b9`, 2026-09-12 — 작업 자체는 2026-09-11)
+
+- 코드: `collector/body_image_extractor.py`(신규) — 기사 원문 페이지를 요청해 본문 컨테이너(`<article>` 등 우선순위 셀렉터) 안의 `<img>` 태그를 추출. 광고/공유버튼/아바타/로고/테마 배지/팀 엠블럼 아이콘/도박 책임 고지 배너는 URL·클래스명 패턴으로, "관련 기사 추천"·"뉴스레터 팔로우 유도" 같은 사이트 위젯은 조상 요소의 클래스명(`sdc-article-strapline`, `sdc-site-tile` 등 실제 Sky Sports 사례로 확인)으로, 배너/아이콘류는 width/height 비율로 각각 걸러낸다. 지연 로딩 플레이스홀더(data: URI 1x1 GIF)는 `data-src`로 대체 추출. 이미지 파일 자체는 다운로드/재호스팅하지 않고 URL만 저장(저작권 원칙 동일)
+- DB: `article_images` 테이블 신규(`article_id`+`position` 복합 PK, `docs/DB_SCHEMA.md` 참고). `collector/db.py`의 `save_articles()`가 신규 기사 저장 시마다 자동 크롤링(요청 간 1초 지연, `BODY_IMAGE_REQUEST_DELAY_SECONDS`). 기존 기사용 소급 배치 `collector/backfill_article_images.py`(신규)
+- 실행 결과(2026-09-11): 전체 847건 중 **769건(91%)에서 본문 이미지 확보**, 총 1021개 row. 실행 도중 실제 라이브 데이터에서 이미지 오추출 버그 4종을 발견해 수정: (1) 지연 로딩 플레이스홀더가 "이미지"로 잘못 추출(theanfieldwrap.com), (2) PlanetFootball/Football365/TeamTalk 세 곳이 공유하는 테마의 "Google 뉴스 선호 소스" 배지 이미지가 본문 이미지로 오인(3개 사이트 동일 테마 확인), (3) Sky Sports의 WhatsApp 팔로우 유도·Super 6 배팅 홍보·"관련 기사 더 보기" 추천 그리드가 `<article>` 태그 안에 포함돼 있어 오추출, (4) Football365 기사 본문에 삽입된 도박 책임 고지 배너(gambleaware.org 링크, 1600x200 배너). 네 경우 모두 발견 시점에 오염된 DB row를 정리하고 재크롤링해 반영함
+- 백엔드: `Article.images`(`@ElementCollection` + `@OrderColumn`), `ArticleDetailResponse.images`, `ArticleService`가 상세 조회 시 함께 반환(`docs/API.md` 참고)
+- 프론트엔드: `ArticleDetailPage.jsx` 상단에 대표 이미지(본문 크롤링 이미지 최우선, 없으면 RSS 썸네일 `imageUrl`로 폴백), 본문 문단 사이에 최대 2장 추가 삽입(`splitIntoParagraphs`로 문단 분리 후 균등 배치), 이미지 로드 실패 시 자동 숨김(기존 썸네일 폴백 로직과 동일). **설계 결정(2026-09-11, 사용자 피드백 반영)**: 처음엔 `imageUrl`을 항상 우선했으나, Sky Sports "Paper Talk" 같은 매체 브랜드 템플릿 그래픽이 대표 이미지로 뜨는 문제가 실제 확인되어 본문 크롤링 이미지(실제 선수/경기 사진일 가능성이 높음)를 우선하도록 뒤집음 — `imageUrl`은 본문 이미지가 하나도 없을 때만 폴백으로 사용
+- 알려진 한계: 브랜드 템플릿 썸네일 오탐 방지 로직들은 실제 발견된 사례 기반 휴리스틱이라 완벽하지 않음. "Paper Talk"류 텍스트 요약 기사나 하이라이트 영상 임베드 기사는 애초에 본문에 실제 사진이 없어(비디오 썸네일이나 매체 브랜드 그래픽만 있음) 개선의 여지가 없는 경우도 있음(소스 콘텐츠 자체의 한계, 콜렉터 로직 문제 아님)
+- 테스트: `collector/tests/test_body_image_extractor.py`(24개, 위 4가지 실제 버그 각각에 대한 회귀 테스트 포함), `collector/tests/test_db.py`(이미지 저장/폴백 2개 추가), 백엔드 `ArticleRepositoryTest`(1개 추가), 프론트 `articleDisplay.test.js`(`splitIntoParagraphs` 5개), `ArticleDetailPage.test.jsx`(신규 파일, 6개) — 전부 통과
+- 브라우저 실측 확인(2026-09-11): 이미지 있는 기사(대표 이미지만 있는 경우, 문단 사이 삽입까지 있는 경우)와 없는 기사 각각 레이아웃 깨짐 없이 정상 표시 확인. 사용자가 실시간으로 Sky Sports 브랜드 로고 노출 문제를 지적해 즉시 수정 및 재확인함
 
 ---
 
-## 테스트 스위트 전체 결과 (2026-09-07 재실행 기준)
+## 테스트 스위트 전체 결과 (2026-09-12 재실행 기준, 커밋 전 최종 확인)
 
 | 모듈 | 결과 | 비고 |
 |---|---|---|
-| backend (`./gradlew test`) | ✅ 11개 클래스, 53개 테스트, 0 실패 | ⚠️ 이 프로젝트는 `build.gradle`에서 빌드 출력을 `%TEMP%/liverpool-news-backend-build`로 리다이렉트함(OneDrive 동기화 문제 회피) — `backend/build/`(프로젝트 폴더 안)의 결과는 2026-09-01자 stale 데이터이니 절대 참고하지 말 것 |
-| collector (`pytest tests/`) | ✅ 124개 테스트, 0 실패 | |
-| translator (`pytest tests/`) | ✅ 48개 테스트, 0 실패 | `argostranslate` 패키지가 원래 미설치 상태였음(설치 후 통과) |
-| frontend-web (`vitest run`) | ✅ 9개 파일, 39개 테스트, 0 실패 | |
+| backend (`./gradlew test --rerun`) | ✅ BUILD SUCCESSFUL | ⚠️ 이 프로젝트는 `build.gradle`에서 빌드 출력을 `%TEMP%/liverpool-news-backend-build`로 리다이렉트함(OneDrive 동기화 문제 회피) — `backend/build/`(프로젝트 폴더 안)의 결과는 stale 데이터이니 참고하지 말 것 |
+| collector (`pytest tests/`) | ✅ 155개 테스트, 0 실패 | 2026-09-11 세션 기록엔 150개였으나 재실행 시 155개로 집계됨(카운트 오차, 실패 아님) |
+| translator (`pytest tests/`) | ✅ 59개 테스트, 0 실패 (2026-09-07 기준, 이번 세션엔 변경 없음) | |
+| frontend-web (`vitest run`) | ✅ 11개 파일, 50개 테스트, 0 실패 | |
 
-## DB 현재 상태 스냅샷 (2026-09-07, 로컬 MySQL80 `footballnews`)
+## DB 현재 상태 스냅샷 (2026-09-11, 로컬 MySQL80 `footballnews`)
 
 | 테이블/항목 | 값 |
 |---|---|
-| articles | 477건 |
-| article_clubs | 529행 |
-| articles.quoted_reporter 채워짐 | 7건 |
-| articles.image_url 채워짐 | 75건 |
-| articles.category 분포 | MATCH 36 / TRANSFER 102 / PLAYER 10 / OTHER 329 |
-| rumor_threads | 18건 (cross_reported=true 0건) |
-| rumor_thread_articles | 21건 |
+| articles | 847건 (2026-09-07엔 477건 — 위 14번 백필 확대 참고) |
+| article_clubs | 981행 |
+| article_images | 1021행 (본문 이미지 있는 기사 769건 / 847건, 91% — 위 15번 참고) |
+| articles.quoted_reporter 채워짐 | 확인 안 함(이번 세션 미변경 영역) |
+| articles.image_url 채워짐 | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 370건 추가되며 수치 자체는 변함) |
+| rumor_threads / rumor_thread_articles | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 기사 유입되며 수치는 변함) |
 | users | 1건 |
 | user_preferences | 1건 (favorite_club_id 설정 0건) |
-| translations | 477건 (전체 완료, 2026-09-11 — 위 11번 참고) |
+| translations | 478건 (2026-09-11 테스트로 1건 추가 번역 — 위 15번 참고. 신규 백필 370건은 대부분 미번역 상태) |
 | clubs | 50건 |
