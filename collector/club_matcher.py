@@ -40,6 +40,7 @@ ALIAS_OVERRIDES: Dict[str, List[str]] = {
     "AC Milan": ["Milan"],
     "AS Roma": ["Roma"],
     "Paris Saint-Germain": ["PSG"],
+    "Real Betis": ["Betis"],
 }
 
 

@@ -4,6 +4,7 @@ CLUBS = [
     {"id": 1, "name": "Liverpool", "league": "EPL"},
     {"id": 4, "name": "Manchester United", "league": "EPL"},
     {"id": 31, "name": "Nice", "league": "LIGUE_1"},
+    {"id": 40, "name": "Real Betis", "league": "LA_LIGA"},
 ]
 
 
@@ -55,3 +56,13 @@ def test_detect_clubs_is_case_sensitive_to_avoid_common_word_false_positives():
 
     assert detect_clubs("It would be nice to sign a new striker.", alias_map) == []
     assert detect_clubs("Nice are chasing a new striker.", alias_map) == ["Nice"]
+
+
+def test_detect_clubs_matches_real_betis_short_form():
+    """공식명 전체("Real Betis")가 아니라 매체가 흔히 쓰는 축약형("Betis")만으로도
+    매칭되어야 한다 — 실제 DB에서 이 축약형만 쓰여 놓친 기사가 발견됨."""
+    alias_map = build_alias_map(CLUBS)
+
+    result = detect_clubs("Champions League Dark Horse Power Ranking: Roma, Betis, Fenerbahce", alias_map)
+
+    assert "Real Betis" in result

@@ -54,6 +54,11 @@
 - 코드: `collector/club_matcher.py` (`detect_clubs`, 별칭 매칭)
 - DB: `article_clubs` 조인 테이블 529건 (기사 477건 대비 — 기사 하나가 여러 구단을 언급하는 경우 포함)
 - 테스트: `collector/tests/test_club_matcher.py` — collector 전체 124개 테스트에 포함되어 통과(2026-09-07 재실행)
+- **2026-09-12 세션 진단 + 보강**: 50개 구단 중 기사 0건인 구단 23개 발견(전부 분데스리가/라리가/리그1/세리에A의 중위권 구단 — EPL·빅클럽은 전부 1건 이상). 5개 이상 표본으로 원인 조사: (1) `Real Betis`는 실제로 "Betis" 축약형으로 언급된 기사(id 810, Planet Football)가 이미 있었는데 `club_matcher.ALIAS_OVERRIDES`에 별칭이 없어 놓치고 있었음(**진짜 매칭 버그, 수정함** — `"Real Betis": ["Betis"]` 추가) (2) `Union Berlin`은 "Union Saint-Gilloise"(벨기에 다른 구단)와 혼동될 뻔했으나 기존 구단명 전체 매칭 로직이 이미 정확히 구분하고 있어 버그 아님(진짜 0건) (3) 나머지 21개는 텍스트 검색으로도 어떤 표현으로도 언급 자체가 없어 **소스 자체의 한계**(영어권 매체가 이 리그 중위권 구단을 잘 안 다룸)로 판단
+  - `retag_articles.py`에 `--all` 플래그 추가(`retag_all_articles_for_new_aliases`, 신규): 기존 `retag_untagged_articles`는 태그가 하나도 없는 기사만 보는데, "Betis" 같은 새 별칭은 이미 다른 구단(AS Roma)으로 태깅된 기사에도 적용돼야 해서 전체 기사를 다시 스캔하는 버전이 필요했음. 실행 결과 Real Betis 외에도 별칭 맵이 그동안 여러 커밋에 걸쳐 갱신되면서 쌓여 있던 태깅 누락(Everton/Manchester City/Chelsea 등 기존 구단들도 일부 기사에서 추가로 태깅됨, +17건)이 함께 해소됨
+  - 백필 확대(8→15페이지, 아래 14번 참고) 후 재확인: 0건 구단 23 → **20개**로 감소(Real Betis 외에 Lens/Lille은 별칭 문제가 아니라 백필로 새로 수집된 기사에 있었음). 나머지 20개는 확대된 전체 1321건 기준으로도 텍스트 검색 0건 재확인 — 소스 한계로 최종 판단(목록: Bayer Leverkusen, Borussia Monchengladbach, Eintracht Frankfurt, Freiburg, Union Berlin, Wolfsburg, Athletic Bilbao, Girona, Real Sociedad, Sevilla, Villarreal, Lyon, Marseille, Strasbourg, Toulouse, Atalanta, Bologna, Fiorentina, Lazio, Torino)
+  - 브라우저/API 확인: `GET /articles?club=Real Betis`, `club=Lille`, `club=Lens` 모두 정상 반환 확인
+  - 테스트: `test_club_matcher.py`에 Real Betis 축약형 매칭 1개, `test_retag_articles.py`에 전체 재태깅(기존 태그 있는 기사에 추가 태깅 + 멱등성) 2개 추가 — collector 전체 164개 통과
 
 ### 6. 기자 인용 감지 (quoted_reporter)
 
@@ -152,6 +157,8 @@
 - 신규 소스 조사(2026-09-11, 후보 7곳: GiveMeSport/TeamTalk/football.london/Mirror Football/CaughtOffside/FootballTransfers.com/PlanetFootball) — **추가**: TeamTalk, PlanetFootball(둘 다 실제 RSS 확인 + robots.txt에 AI 봇 차단 문구 없음). **제외**: GiveMeSport(robots.txt가 AI 학습/RAG용 사용을 명시적으로 전면 금지 + anthropic-ai/ClaudeBot 개별 차단), football.london·Mirror Football(Reach plc 소유, 이미 제외한 Metro/Liverpool Echo와 동일하게 ClaudeBot/anthropic-ai를 `Disallow: /`), CaughtOffside(robots.txt가 링크하는 `m4ow.uk/socw/2.txt`가 Football Italia와 동일한 "Search Only Terms Contract"로 AI 데이터셋 구축을 전면 금지), FootballTransfers.com(`/rss`·`/en/feed`가 실제로는 RSS가 아니라 SPA 홈페이지 HTML을 그대로 반환 — RSS 자체가 존재하지 않아 기술적으로 등록 불가). 근거 상세는 `collector/sources.py` 주석 참고
 - DB 반영: 백필 전 477건 → 백필 후 **847건**(신규 370건, 원문 수집 시점 raw 항목 1577건 중복 제외). 소스별 분포는 위 13번 표 및 아래 DB 스냅샷 참고
 - 테스트: 별도 테스트 파일 없음(기존 `backfill_categories.py` 등 다른 1회성 배치 스크립트와 동일한 컨벤션) — `max_pages`/`delay_seconds` 페이지네이션 로직 자체는 `collector/tests/test_rss_collector.py`가 이미 검증
+- **2026-09-12 세션 2차 확대(8→15페이지)**: 847건 → **1321건**(신규 474건, raw 2925건 중 중복 제외). 소스별: Anfield Watch 300 / The Anfield Wrap 225 / Empire of The Kop 225 / Football365 151 / Planet Football 148 / 90min 90 / Sky Sports Football 65 / Independent Football 65 / TeamTalk 52. **버그 발견 및 수정**: 이 실행 시 백엔드가 기본 포트(8080)가 아니라 8081에서 떠 있었는데, `collector/db.py`의 `_load_alias_map()`이 `GET /clubs`를 기본 URL(`http://localhost:8080`)로 호출하다 실패해 신규 474건 중 forced_club이 없는 소스(Sky Sports/Independent/Football365/90min/TeamTalk/Planet Football) 307건이 구단 태깅 없이 저장됨(실패는 조용히 무시되고 로그 한 줄만 남기는 기존 설계 — `db.py` 자체는 정상 동작, 이번엔 환경(포트 충돌) 문제). `COLLECTOR_BACKEND_API_URL` 환경변수로 올바른 포트를 지정해 `retag_articles.py --all`을 재실행해 307건 전부 재태깅함(결과는 위 5번 항목 참고). **주의**: 로컬에서 collector 스크립트를 백엔드가 기본 포트가 아닌 곳에 떠 있는 상태로 실행할 때는 `COLLECTOR_BACKEND_API_URL`을 반드시 맞춰줘야 함
+- 테스트: 이번에도 별도 테스트 파일 없음(기존 컨벤션과 동일, 페이지네이션 로직은 기존 테스트가 커버)
 
 ### 15. 상세 페이지 본문 이미지 (크롤링 + 표시)
 
@@ -189,22 +196,21 @@
 
 | 모듈 | 결과 | 비고 |
 |---|---|---|
-| backend (`./gradlew test --rerun`) | ✅ BUILD SUCCESSFUL | ⚠️ 이 프로젝트는 `build.gradle`에서 빌드 출력을 `%TEMP%/liverpool-news-backend-build`로 리다이렉트함(OneDrive 동기화 문제 회피) — `backend/build/`(프로젝트 폴더 안)의 결과는 stale 데이터이니 참고하지 말 것 |
-| collector (`pytest tests/`) | ✅ 155개 테스트, 0 실패 | 2026-09-11 세션 기록엔 150개였으나 재실행 시 155개로 집계됨(카운트 오차, 실패 아님) |
-| translator (`pytest tests/`) | ✅ 59개 테스트, 0 실패 (2026-09-07 기준, 이번 세션엔 변경 없음) | |
+| backend (`./gradlew test --rerun`) | ✅ BUILD SUCCESSFUL, 58개 | ⚠️ 이 프로젝트는 `build.gradle`에서 빌드 출력을 `%TEMP%/liverpool-news-backend-build`로 리다이렉트함(OneDrive 동기화 문제 회피) — `backend/build/`(프로젝트 폴더 안)의 결과는 stale 데이터이니 참고하지 말 것 |
+| collector (`pytest tests/`) | ✅ 164개 테스트, 0 실패 | 이 세션에서 155 → 164(본문 텍스트 크롤링 6개, Real Betis 별칭 1개, 전체 재태깅 2개 추가) |
+| translator (`pytest tests/`) | ✅ 63개 테스트, 0 실패 | 이 세션에서 59 → 63(본문 없는 기사 가드 2개 추가) |
 | frontend-web (`vitest run`) | ✅ 11개 파일, 54개 테스트, 0 실패 | 16번(UI 개편) 작업으로 `FeedPage.test.jsx`에 4개 추가(50 → 54), 2026-09-12 재실행 기준 |
 
-## DB 현재 상태 스냅샷 (2026-09-11, 로컬 MySQL80 `footballnews`)
+## DB 현재 상태 스냅샷 (2026-09-12 세션 후반부 기준, 로컬 MySQL80 `footballnews`)
 
 | 테이블/항목 | 값 |
 |---|---|
-| articles | 847건 (2026-09-07엔 477건 — 위 14번 백필 확대 참고) |
-| article_clubs | 981행 |
-| article_images | 1021행 (본문 이미지 있는 기사 769건 / 847건, 91% — 위 15번 참고) |
+| articles | **1321건** (세션 시작 시점 847건 — 위 14번 2차 백필 확대 참고) |
+| article_clubs | **1577행** (0건 구단 23 → 20개로 감소, 위 5번 참고) |
+| article_images | 1021행 (2026-09-11 기준, 이번 세션 신규 백필분 474건에는 아직 소급 크롤링 안 함 — 필요 시 `backfill_article_images.py` 재실행 필요) |
 | articles.quoted_reporter 채워짐 | 확인 안 함(이번 세션 미변경 영역) |
-| articles.image_url 채워짐 | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 370건 추가되며 수치 자체는 변함) |
 | rumor_threads / rumor_thread_articles | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 기사 유입되며 수치는 변함) |
 | users | 1건 |
-| user_preferences | 1건 (favorite_club_id 설정 0건) |
-| translations | 478건 (2026-09-11 테스트로 1건 추가 번역 — 위 15번 참고. 신규 백필 370건은 대부분 미번역 상태) |
+| user_preferences | 1건 (favorite_club_id: Liverpool로 설정함 — 이번 세션에서 실사용 데이터 처음 생성, 위 4번 참고) |
+| translations | 826건 완료, **495건 미번역**(`status='COLLECTED'`) — 이번 세션 2차 백필로 신규 유입된 474건이 대부분. 번역 배치는 사용자 확인 후 실행 예정(자동 실행 안 함) |
 | clubs | 50건 |

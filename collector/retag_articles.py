@@ -15,6 +15,7 @@ save_articles()(db.py)는 신규로 저장되는 기사에만 club_matcher 기�
     python retag_articles.py
 """
 
+import argparse
 from collections import Counter
 
 from sqlalchemy import text
@@ -74,10 +75,73 @@ def retag_untagged_articles(engine: Engine, alias_map: dict) -> Counter:
     return counts
 
 
+def retag_all_articles_for_new_aliases(engine: Engine, alias_map: dict) -> Counter:
+    """club_matcher.ALIAS_OVERRIDES에 별칭이 새로 추가된 뒤, 이미 태그가 있는 기사를
+    포함한 전체 기사를 다시 검사해 새로 인식되는 구단을 추가로 태깅한다.
+
+    retag_untagged_articles()는 태그가 하나도 없는 기사만 보므로, 이미 다른 구단으로
+    태깅된 기사에 새 별칭으로만 인식되는 구단이 하나 더 있어도 놓친다(예: "Roma,
+    Betis, Fenerbahce" 기사가 이미 AS Roma로 태깅돼 있으면 "Betis" 별칭을 나중에
+    추가해도 그 기사를 다시 보지 않음). 이 함수는 기사별 기존 태그를 먼저 확인해
+    거기 없는 것만 추가하므로 중복 삽입 없이 여러 번 실행해도 안전하다(idempotent).
+    """
+    counts: Counter = Counter()
+
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text("SELECT id, source, title_original, content_original FROM articles")
+        ).all()
+
+        for row in rows:
+            detected = set(
+                detect_clubs(f"{row.title_original}\n{row.content_original}", alias_map)
+            )
+            forced_club = SOURCE_FORCED_CLUB.get(row.source)
+            if forced_club:
+                detected.add(forced_club)
+
+            if not detected:
+                continue
+
+            existing = {
+                existing_row.club_name
+                for existing_row in connection.execute(
+                    text("SELECT club_name FROM article_clubs WHERE article_id = :id"),
+                    {"id": row.id},
+                ).all()
+            }
+
+            for club_name in sorted(detected - existing):
+                connection.execute(
+                    text(
+                        "INSERT INTO article_clubs (article_id, club_name) VALUES (:article_id, :club_name)"
+                    ),
+                    {"article_id": row.id, "club_name": club_name},
+                )
+                counts[club_name] += 1
+
+    return counts
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="구단 자동 태깅을 기존 기사에 소급 적용한다."
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="이미 태그가 있는 기사도 포함해 전체 기사를 다시 검사한다 "
+        "(club_matcher에 별칭을 새로 추가한 뒤 사용). 기본값은 태그가 하나도 없는 기사만 처리한다.",
+    )
+    args = parser.parse_args()
+
     engine = db.get_engine()
     alias_map = build_alias_map(fetch_clubs())
-    counts = retag_untagged_articles(engine, alias_map)
+
+    if args.all:
+        counts = retag_all_articles_for_new_aliases(engine, alias_map)
+    else:
+        counts = retag_untagged_articles(engine, alias_map)
 
     if not counts:
         print("재태깅할 기사가 없습니다 (모든 기사에 이미 태그가 있음).")
