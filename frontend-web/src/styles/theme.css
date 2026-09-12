@@ -91,7 +91,8 @@
 
 .rf-wordmark {
   font-family: var(--rf-font-mono);
-  font-size: 12px;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: 0.28em;
   color: var(--rf-red);
 }
@@ -192,6 +193,47 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* 전체 / 관심구단 탭 */
+.rf-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 18px;
+}
+.rf-tab {
+  font-family: inherit;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--rf-muted-2);
+  padding: 10px 4px;
+  margin-right: 22px;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rf-tab:hover {
+  color: var(--rf-text-dim);
+}
+.rf-tab[data-selected="true"] {
+  color: var(--rf-text);
+  border-bottom-color: var(--rf-red);
+}
+
+/* 키워드 검색 + 구단 드롭다운 줄 (전체 탭 전용 보조 필터 포함) */
+.rf-search-row {
+  display: flex;
+  gap: 10px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--rf-border-soft);
+}
+.rf-search-row .rf-input {
+  flex: 1;
+}
+.rf-select-club {
+  max-width: 200px;
 }
 
 .rf-league-label {
@@ -456,4 +498,36 @@
 .rf-toast {
   font-size: 13px;
   color: var(--rf-muted-2);
+}
+
+/* 좁은 화면(모바일): 탭/칩은 이미 flex-wrap이라 줄바꿈되고, 여기선 폭이 좁아지며
+   깨지는 요소만 조정한다 — 검색줄의 입력/드롭다운/버튼 줄바꿈, 기사 카드 썸네일
+   비율. 상세 페이지 이미지는 이미 width:100%라 별도 처리가 필요 없다. */
+@media (max-width: 600px) {
+  .rf-app {
+    padding: 0 14px 100px;
+  }
+  .rf-search-row {
+    flex-wrap: wrap;
+  }
+  .rf-search-row .rf-input {
+    flex-basis: 100%;
+  }
+  .rf-select-club {
+    max-width: none;
+    flex: 1;
+  }
+  .rf-article-card {
+    gap: 12px;
+  }
+  .rf-article-thumb {
+    width: 72px;
+    height: 72px;
+  }
+  .rf-article-title {
+    font-size: 16px;
+  }
+  .rf-detail-title {
+    font-size: 24px;
+  }
 }

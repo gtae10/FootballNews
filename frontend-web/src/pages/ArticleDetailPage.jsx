@@ -100,7 +100,7 @@ export default function ArticleDetailPage() {
               />
             )}
             <div className="rf-article-meta" style={{ paddingBottom: 16 }}>
-              <span style={{ color: tierBadge(article.sourceTier).color }}>
+              <span style={{ color: tierBadge(article.sourceTier).color, fontSize: 12.5 }}>
                 {tierBadge(article.sourceTier).label}
               </span>
               <span>{article.source}</span>

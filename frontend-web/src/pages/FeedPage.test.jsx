@@ -58,13 +58,16 @@ describe("FeedPage 게스트 모드", () => {
     expect(apiFetch).not.toHaveBeenCalledWith("/users/me/preferences");
   });
 
-  it("로그인한 사용자는 관심 구단 기준으로 필터가 채워진다", async () => {
+  it("로그인한 사용자도 기본값은 전체 탭이라 club 파라미터 없이 전체 기사를 조회한다", async () => {
+    // 회귀 테스트: 예전엔 로그인 사용자의 관심 구단 중 첫 번째로 전체 탭 필터가
+    // 자동으로 채워지는 버그가 있었다 — "전체" 탭은 club 필터가 전혀 없어야 한다.
     mockApiFetch();
     useAuth.mockReturnValue({ isGuest: false });
 
     renderFeedPage();
 
-    await waitFor(() => expect(screen.getByRole("combobox")).toHaveValue("Liverpool"));
+    await waitFor(() => expect(screen.getByRole("combobox")).toHaveValue(""));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/articles"));
   });
 });
 
@@ -208,5 +211,77 @@ describe("FeedPage 카테고리 필터", () => {
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith("/articles?club=Liverpool&category=TRANSFER")
     );
+  });
+});
+
+describe("FeedPage 전체/관심구단 탭", () => {
+  const PREFERENCES = {
+    clubs: [CLUBS[0], CLUBS[1]],
+    favoriteClub: CLUBS[0],
+  };
+
+  function mockTabApiFetch({ isGuest }) {
+    apiFetch.mockImplementation(async (path) => {
+      if (path === "/clubs") return CLUBS;
+      if (path === "/articles/top?limit=10") return [];
+      if (path === "/users/me/preferences") {
+        if (isGuest) throw new Error("게스트는 이 경로를 호출하면 안 됨");
+        return PREFERENCES;
+      }
+      if (path.startsWith("/articles")) return { content: [] };
+      throw new Error(`unexpected apiFetch call: ${path}`);
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("기본은 전체 탭이며, 로그인 사용자라도 club 파라미터 없이 조회한다", async () => {
+    mockTabApiFetch({ isGuest: false });
+    useAuth.mockReturnValue({ isGuest: false });
+
+    renderFeedPage();
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "전체" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/articles"));
+  });
+
+  it("관심구단 탭을 누르면 관심 구단 전체 목록으로 clubs 파라미터를 조회한다", async () => {
+    mockTabApiFetch({ isGuest: false });
+    useAuth.mockReturnValue({ isGuest: false });
+    renderFeedPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("tab", { name: "관심구단" }));
+
+    // URLSearchParams가 쉼표를 퍼센트 인코딩하지만(백엔드는 디코딩 후 동일하게 처리),
+    // 실제로 만들어지는 요청 문자열 그대로 검증한다.
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/articles?clubs=Liverpool%2CArsenal"));
+  });
+
+  it("관심구단 탭에서 최애팀만 보기를 선택하면 club 파라미터 하나만 조회한다", async () => {
+    mockTabApiFetch({ isGuest: false });
+    useAuth.mockReturnValue({ isGuest: false });
+    renderFeedPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("tab", { name: "관심구단" }));
+    await user.click(await screen.findByRole("button", { name: "최애팀만" }));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/articles?club=Liverpool"));
+  });
+
+  it("게스트가 관심구단 탭을 누르면 로그인 안내만 보이고 기사를 조회하지 않는다", async () => {
+    mockTabApiFetch({ isGuest: true });
+    useAuth.mockReturnValue({ isGuest: true });
+    renderFeedPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("tab", { name: "관심구단" }));
+
+    expect(await screen.findByRole("link", { name: /로그인하면/ })).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith("/users/me/preferences");
+    expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("clubs="));
   });
 });

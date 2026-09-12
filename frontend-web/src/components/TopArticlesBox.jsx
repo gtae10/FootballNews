@@ -53,7 +53,7 @@ export default function TopArticlesBox() {
               <span style={{ flex: 1, fontSize: 14.5, lineHeight: 1.55, color: "var(--rf-text-dim)" }}>
                 {article.titleKo}
               </span>
-              <span className="rf-mono" style={{ fontSize: 10.5, color: badge.color, whiteSpace: "nowrap" }}>
+              <span className="rf-mono" style={{ fontSize: 12.5, color: badge.color, whiteSpace: "nowrap" }}>
                 {badge.label}
               </span>
             </div>
