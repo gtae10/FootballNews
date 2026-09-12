@@ -220,7 +220,7 @@
 
 ### 19. 번역 배치 우선순위 큐 + 하루 처리 한도 (DAILY_TRANSLATION_LIMIT)
 
-**✅ 완료** (커밋 예정, 2026-09-13)
+**✅ 완료** (커밋 `3728721`, 2026-09-13)
 
 - 배경: 사용자가 "이전에 추가한 DAILY_TRANSLATION_LIMIT"을 언급하며 우선순위 큐를 요청했으나, 실제로는 `DAILY_TRANSLATION_LIMIT`도 요청에서 언급된 `verified_source_count` 컬럼도 코드베이스에 존재하지 않았음(grep 0건 확인) — 실제 컬럼은 `independent_source_count`이고, `docs/DB_SCHEMA.md`에 "의도적으로 `verified_*`가 아닌 이 이름을 썼다"는 설계 의도가 명시돼 있어 그대로 따름. 사용자에게 이 사실을 먼저 알린 뒤, 우선순위 큐와 하루 한도 둘 다 신규 기능으로 구현함
 - 코드:
