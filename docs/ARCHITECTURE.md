@@ -68,6 +68,24 @@
   남아 다음 배치 실행 때 자동 재시도된다.
 - Argos Translate는 문장 단위 직역에 가까워 Claude/GPT 기반 요약 번역보다
   품질이 낮을 수 있다는 트레이드오프가 있다(상세: `translator/README.md`).
+- **우선순위 큐 + 하루 처리 한도**: `status='COLLECTED'`인 기사는 사실상 번역
+  대기열이다. `DAILY_TRANSLATION_LIMIT`(기본 300, 환경 변수로 조정)으로 하루
+  처리량을 제한해 유료 엔진(OpenAI/Claude) API 비용이 무한정 늘지 않게 한다.
+  한도를 넘긴 기사는 버려지지 않고 COLLECTED 상태 그대로 다음 배치(대개
+  다음날)로 자동 이월된다. 어떤 기사를 먼저 처리할지는 `translator/priority.py`가
+  정한다 — ① `source_tier=1`(대형/공식 매체)이거나 신뢰도 높은 기자가 인용된
+  기사(`quoted_reporter`), ② 이적 루머 스레드에 속하고 교차 보도 매체 수
+  (`rumor_threads.independent_source_count`)가 많은 기사, ③ 나머지는 발행일
+  최신순. 오늘 이미 처리한 건수는 `translations.translated_at`으로 매 실행마다
+  다시 세어 확인한다(scheduler.py가 30분마다 새 프로세스로 실행하므로 메모리에
+  상태를 들고 있을 수 없음). 이월 건수가 `CARRYOVER_WARNING_THRESHOLD`(기본
+  500)를 넘으면 한도 상향을 제안하는 경고 로그를 남긴다.
+  - **알려진 상호작용**: `source_tier=1`은 우선순위 1순위이므로, 본문이 영구히
+    비어 있어 매번 실패하는 tier-1 기사(예: 만료된 라이브 블로그, 위 "기사
+    이미지 썸네일"/본문 크롤링 섹션 참고)도 매 배치마다 큐 맨 앞에서 재시도된다.
+    API 비용은 들지 않지만(본문 없음 가드가 호출 전에 막음) 한도 슬롯을 일부
+    차지하므로, 이런 기사가 많아지면 로그가 "번역 실패" 줄로 다소 시끄러워질 수
+    있다(실제로 확인함, 2026-09-12 세션).
 
 ### 5. API 서버 (`backend/`)
 - Spring Boot 기반 REST API

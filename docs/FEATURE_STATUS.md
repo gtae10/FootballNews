@@ -218,6 +218,20 @@
   - 과거 누락 데이터 재확인(요청 4/5번): `retag_articles.py --all`을 다시 실행 → "재태깅할 기사가 없습니다"(추가로 발견된 누락 없음, 이전 세션에서 이미 다 복구됨을 재확인). 0건 구단 20개(위 5번의 최종 목록과 동일), 태그 없는 기사 203/1348건 — 전부 버그가 아니라 실제로 어떤 추적 구단도 언급하지 않는 기사(리그 전반 이슈 등)로 판단
   - 테스트: collector 전체 169개 통과
 
+### 19. 번역 배치 우선순위 큐 + 하루 처리 한도 (DAILY_TRANSLATION_LIMIT)
+
+**✅ 완료** (커밋 예정, 2026-09-13)
+
+- 배경: 사용자가 "이전에 추가한 DAILY_TRANSLATION_LIMIT"을 언급하며 우선순위 큐를 요청했으나, 실제로는 `DAILY_TRANSLATION_LIMIT`도 요청에서 언급된 `verified_source_count` 컬럼도 코드베이스에 존재하지 않았음(grep 0건 확인) — 실제 컬럼은 `independent_source_count`이고, `docs/DB_SCHEMA.md`에 "의도적으로 `verified_*`가 아닌 이 이름을 썼다"는 설계 의도가 명시돼 있어 그대로 따름. 사용자에게 이 사실을 먼저 알린 뒤, 우선순위 큐와 하루 한도 둘 다 신규 기능으로 구현함
+- 코드:
+  - `translator/priority.py`(신규): `sort_by_priority()` — 1순위 `source_tier=1` 또는 `quoted_reporter` 존재, 2순위 이적 루머 스레드의 `independent_source_count` 내림차순, 3순위 `published_at` 최신순
+  - `translator/db.py`: `fetch_untranslated_articles()`가 우선순위 정렬에 필요한 필드(`source_tier`/`quoted_reporter`/`published_at`/`independent_source_count`, `rumor_thread_articles`/`rumor_threads` LEFT JOIN)까지 함께 조회하도록 확장. `count_translated_today()`(신규) — 오늘(UTC 자정 기준) 이미 처리한 건수를 매번 DB에서 다시 세어 반환(scheduler.py가 30분마다 새 프로세스로 실행되므로 메모리 상태 공유 불가)
+  - `translator/translate.py`: `DAILY_TRANSLATION_LIMIT`(기본 300)·`CARRYOVER_WARNING_THRESHOLD`(기본 500) 환경변수 추가. `run_translation_batch()`가 우선순위 정렬 → 오늘 남은 한도만큼만 슬라이스 → 처리, 끝나면 `"오늘 처리: N건, 이월: M건 (엔진: ...)"` 로그 + 이월이 임계값 초과 시 `[WARNING]` 로그. 로그는 scheduler.py 경유 시 그 로그 파일에 그대로 남음(별도 파일 안 만듦)
+- **실전 검증(요청 8번)**: 프로덕션 DB에서 서로 다른 우선순위를 가진 기존 번역 완료 기사 7건(tier1 2건/교차검증 2건(count 2·1)/일반 3건)을 골라 번역 row 삭제 + status를 COLLECTED로 되돌린 뒤, `DAILY_TRANSLATION_LIMIT`을 (그날 UTC 기준 이미 처리된 건수 + 29)로 맞춰 실제 `translate.py`를 실행. **예측한 순서(tier1 2건 → 교차검증 2건(count 내림차순) → 일반 중 최신 1건) 그대로 처리되고, 일반 기사 중 가장 오래된 2건은 COLLECTED로 정확히 남는 것을 `translated_at` 타임스탬프로 확인함**. 사용값(한도 등)은 코드에 반영한 게 아니라 이번 실행에만 준 환경변수라 기본값(300)은 그대로 유지됨(되돌릴 것 없음)
+  - **부수 발견**: `source_tier=1`은 최우선이라, 본문이 영구히 비어 있는 tier-1 기사(만료된 라이브 블로그 18~24건, 위 11/18번 참고)도 매 배치 큐 맨 앞에서 매번 재시도됨 — API 비용은 안 들지만(빈 본문 가드가 막음) 한도 슬롯을 일부 차지하고 로그에 "번역 실패" 줄이 늘어남. 실제로 이 때문에 한도=5로는 정작 처리할 게 하나도 없어(빈 기사 24건이 전부 소진) 실전 검증 시 한도를 더 크게 잡아야 했음. 코드 수정은 하지 않고 문서에 알려진 상호작용으로 남김
+  - 복구: 위 7건 중 5건은 이번 실전 검증으로 정상 재번역됨. 남은 2건(이월분)은 상시 실행 중인 scheduler.py가 다음 30분 주기에 자동으로 다시 처리함 — 수동 복구 불필요(이월 동작 자체를 실제로 보여주는 것이라 의도적으로 그대로 둠)
+- 테스트: `translator/tests/test_priority.py`(신규 7개), `test_db.py`(+4), `test_translate.py`(+4), 기존 두 파일의 in-memory DB 픽스처에 `source_tier`/`quoted_reporter`/`published_at`/`rumor_thread_articles`/`rumor_threads` 추가(스키마 확장에 맞춰 갱신) — translator 전체 63 → **78개 통과**
+
 ---
 
 ## 테스트 스위트 전체 결과 (2026-09-12 재실행 기준, 커밋 전 최종 확인)
@@ -226,19 +240,19 @@
 |---|---|---|
 | backend (`./gradlew test --rerun`) | ✅ BUILD SUCCESSFUL, 58개 | ⚠️ 이 프로젝트는 `build.gradle`에서 빌드 출력을 `%TEMP%/liverpool-news-backend-build`로 리다이렉트함(OneDrive 동기화 문제 회피) — `backend/build/`(프로젝트 폴더 안)의 결과는 stale 데이터이니 참고하지 말 것 |
 | collector (`pytest tests/`) | ✅ 169개 테스트, 0 실패 | 이 세션에서 155 → 169(본문 텍스트 크롤링 6, Real Betis 별칭 1, 전체 재태깅 2, HTML 엔티티 디코딩 1, 스케줄러 인코딩 1, DB 직접 조회 3 추가) |
-| translator (`pytest tests/`) | ✅ 63개 테스트, 0 실패 | 이 세션에서 59 → 63(본문 없는 기사 가드 2개 추가) |
+| translator (`pytest tests/`) | ✅ 78개 테스트, 0 실패 | 이 세션에서 59 → 78(본문 없는 기사 가드 2, 우선순위 큐 15 추가) |
 | frontend-web (`vitest run`) | ✅ 11개 파일, 54개 테스트, 0 실패 | 16번(UI 개편) 작업으로 `FeedPage.test.jsx`에 4개 추가(50 → 54), 2026-09-12 재실행 기준 |
 
 ## DB 현재 상태 스냅샷 (2026-09-12 세션 후반부 기준, 로컬 MySQL80 `footballnews`)
 
 | 테이블/항목 | 값 |
 |---|---|
-| articles | **1348건** (세션 시작 시점 847건 — 위 14번 2차 백필 확대 + 스케줄러 상시 수집 반영) |
+| articles | **1352건** (세션 시작 시점 847건 — 위 14번 2차 백필 확대 + 스케줄러 상시 수집 반영, 계속 증가 중) |
 | article_clubs | **1604행** (0건 구단 23 → 20개로 감소 후 안정, 위 5/18번 참고) |
 | article_images | 1021행 (2026-09-11 기준, 이번 세션 신규 백필분 474건에는 아직 소급 크롤링 안 함 — 필요 시 `backfill_article_images.py` 재실행 필요) |
 | articles.quoted_reporter 채워짐 | 확인 안 함(이번 세션 미변경 영역) |
 | rumor_threads / rumor_thread_articles | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 기사 유입되며 수치는 변함) |
 | users | 1건 |
 | user_preferences | 1건 (favorite_club_id: Liverpool로 설정함 — 이번 세션에서 실사용 데이터 처음 생성, 위 4번 참고) |
-| translations | **1324건 완료**, 24건 미번역(`status='COLLECTED'`, 전부 `content_original` 빈 만료 라이브 블로그 — 본문 확보 불가로 확인됨, 위 11/18번 참고) |
+| translations | **1323건 완료**, 29건 미번역(`status='COLLECTED'`, 대부분 `content_original` 빈 만료 라이브 블로그 — 본문 확보 불가로 확인됨, 위 11/18번 참고. 그중 2건은 19번의 우선순위 큐 실전 검증에서 의도적으로 이월시킨 것으로 scheduler.py가 곧 자동 처리함) |
 | clubs | 50건 |

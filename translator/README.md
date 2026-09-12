@@ -30,11 +30,47 @@ collector와 동일한 `articles`/`translations` 테이블 스키마를 사용�
 
 ## 동작 방식
 
-1. `db.fetch_untranslated_articles()`로 `articles.status = 'COLLECTED'`인 기사를 조회한다.
-2. 각 기사를 `translate_article()`로 번역한다 (`translate.py`). 전처리 → 번역 →
+1. `db.fetch_untranslated_articles()`로 `articles.status = 'COLLECTED'`인 기사를
+   우선순위 정렬에 필요한 메타데이터(`source_tier`, `quoted_reporter`,
+   `independent_source_count`, `published_at`)와 함께 조회한다.
+2. `priority.sort_by_priority()`로 처리 순서를 정한다 (아래 "우선순위 큐" 참고).
+3. `DAILY_TRANSLATION_LIMIT`을 적용해 오늘 처리할 수 있는 만큼만 앞에서부터 자른다.
+4. 그 안에 든 기사를 `translate_article()`로 번역한다 (`translate.py`). 전처리 → 번역 →
    후처리 순서로 진행된다.
-3. 번역 결과를 `translations` 테이블에 저장하고, 해당 기사의 `status`를 `TRANSLATED`로
-   갱신한다 (`db.save_translation()`).
+5. 번역 결과를 `translations` 테이블에 저장하고, 해당 기사의 `status`를 `TRANSLATED`로
+   갱신한다 (`db.save_translation()`). 한도를 넘겨 이번에 시도조차 하지 않은 기사는
+   `COLLECTED` 상태 그대로 남아 다음 배치에서 다시 앞에서부터 시도된다.
+
+## 우선순위 큐 (`priority.py`)
+
+`status='COLLECTED'`인 기사는 사실상 번역 대기열이다. `DAILY_TRANSLATION_LIMIT`
+(기본 300, 환경 변수로 조정 가능)으로 하루 처리량을 제한해 유료 엔진(OpenAI/Claude)
+API 비용이 무한정 늘지 않게 하는데, 단순히 오래된 순으로 처리하면 하루 안에
+중요한 속보가 뒤로 밀릴 수 있어 아래 우선순위로 정렬한다(숫자가 작을수록 먼저 처리):
+
+1. **`source_tier == 1`**(대형/공식 매체)이거나 **`quoted_reporter`가 채워진**
+   기사(Fabrizio Romano 등 신뢰도 높은 기자가 인용됨)
+2. **이적 루머 스레드에 속한 기사** — `rumor_threads.independent_source_count`
+   (48시간 이내 교차 보도한 매체 수, `docs/DB_SCHEMA.md` 참고) 내림차순
+3. **나머지는 `published_at` 최신순**
+
+`DAILY_TRANSLATION_LIMIT`을 넘긴 기사는 버려지지 않고 `COLLECTED` 상태 그대로
+남아 다음 배치(scheduler.py 기준 대개 다음날)에 우선순위대로 다시 앞에서부터
+처리된다 — 자동 이월이다. "오늘 이미 몇 건 처리했는지"는 `db.count_translated_today()`
+가 `translations.translated_at`을 매 실행마다 다시 세어 판단한다(scheduler.py가
+30분마다 새 프로세스로 이 스크립트를 실행하므로, 메모리에 상태를 들고 있을 수 없다).
+
+배치가 끝나면 `오늘 처리: N건, 이월: M건 (엔진: ...)` 형식으로 요약을 stdout에
+남긴다 — scheduler.py를 통해 실행 중이라면 scheduler.py가 리다이렉트한 로그
+파일에 그대로 남는다. 이월 건수가 `CARRYOVER_WARNING_THRESHOLD`(기본 500, 환경
+변수로 조정 가능)를 넘으면 `[WARNING]` 태그와 함께 `DAILY_TRANSLATION_LIMIT` 상향
+검토를 제안하는 줄이 추가로 남는다.
+
+**알려진 상호작용**: `source_tier=1`은 최우선이라, 본문이 영구히 비어 있어 매번
+실패하는 tier-1 기사(예: 만료된 Sky Sports 라이브 블로그)도 매 배치 큐 맨 앞에서
+재시도된다. API 호출 전에 빈 본문 가드가 막아주므로 비용은 들지 않지만, 이런
+기사가 많으면 "번역 실패" 로그 줄이 늘어나고 한도 슬롯을 일부 차지한다(실제로
+확인함, 2026-09-12).
 
 ### 전처리 (번역 입력 다듬기)
 
@@ -120,7 +156,9 @@ Argos Translate는 문장 단위 신경망 번역(NMT)이라 Claude 같은 LLM �
 
 ## 파일 구성
 
-- `translate.py`: 미번역 기사를 조회해 번역하는 메인 로직 (엔진 선택 + DB 배치 처리)
+- `translate.py`: 미번역 기사를 조회해 번역하는 메인 로직 (엔진 선택 + 우선순위 큐 + DB 배치 처리)
+- `priority.py`: 하루 한도를 넘긴 COLLECTED 기사 중 무엇을 먼저 처리할지 정하는
+  우선순위 정렬 로직(`sort_by_priority`) — 위 "우선순위 큐" 참고
 - `argos_engine.py`: Argos Translate 기반 번역 엔진 (기본)
 - `anthropic_engine.py`: Claude(Anthropic API) 기반 번역 엔진 (현재 비활성, 보존용)
 - `openai_engine.py`: GPT(OpenAI API) 기반 번역 엔진 (현재 비활성, 보존용)

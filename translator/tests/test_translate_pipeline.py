@@ -24,7 +24,10 @@ def _make_engine():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title_original TEXT,
                     content_original TEXT,
-                    status TEXT
+                    status TEXT,
+                    source_tier INTEGER,
+                    quoted_reporter TEXT,
+                    published_at TEXT
                 )
                 """
             )
@@ -39,6 +42,30 @@ def _make_engine():
                     content_ko TEXT,
                     model_version TEXT,
                     translated_at TEXT
+                )
+                """
+            )
+        )
+        # priority.py가 우선순위 정렬에 쓰는 교차 검증 정보(db.py의 LEFT JOIN 대상) —
+        # 이 파일의 테스트는 전부 루머 스레드가 없는 기사만 다루므로 빈 테이블로 둔다.
+        connection.execute(
+            text(
+                """
+                CREATE TABLE rumor_thread_articles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rumor_thread_id INTEGER,
+                    article_id INTEGER,
+                    story_stage TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE rumor_threads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    independent_source_count INTEGER
                 )
                 """
             )
