@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import create_engine, text
 
+import db
 from db import save_articles
 from rss_collector import CollectedArticle
 
@@ -97,10 +98,36 @@ def _make_engine():
     return engine
 
 
-# save_articles()는 매번 GET /clubs를 호출해 별칭 맵을 만드는데, 이 파일의 테스트는 DB
-# 저장 로직만 검증하면 되므로 club_matcher._load_alias_map을 고정 값으로 대체해 네트워크
-# 호출 없이 결정적으로 동작하게 한다. 감지 로직 자체(별칭 매칭)는 test_club_matcher.py에서 검증한다.
+# save_articles()는 매번 clubs 테이블을 조회해 별칭 맵을 만드는데, 이 파일의 테스트는 DB
+# 저장 로직만 검증하면 되므로 db._load_alias_map을 고정 값으로 대체해 clubs 테이블을 매번
+# 만들 필요 없이 결정적으로 동작하게 한다. 감지 로직 자체(별칭 매칭)는 test_club_matcher.py에서,
+# _load_alias_map 자체의 조회/실패 처리는 아래 별도 테스트에서 검증한다.
 _ALIAS_MAP = {"Liverpool": ["Liverpool"], "Arsenal": ["Arsenal"]}
+
+
+def test_load_alias_map_builds_map_from_clubs_table():
+    engine = _make_engine()
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE clubs (id INTEGER PRIMARY KEY, name TEXT, league TEXT)"))
+        connection.execute(text("INSERT INTO clubs (id, name, league) VALUES (1, 'Liverpool', 'EPL')"))
+
+    alias_map = db._load_alias_map(engine)
+
+    assert "Liverpool" in alias_map["Liverpool"]
+
+
+def test_load_alias_map_logs_clearly_and_returns_empty_map_when_clubs_table_missing(capsys):
+    """clubs 테이블 조회가 실패해도(예외 상황) 수집 자체는 막지 않아야 하지만, 예전처럼
+    조용히 넘어가지 않고 눈에 띄는 경고를 남겨야 한다 — 백엔드가 꺼져 있으면 구단 태깅이
+    통째로 스킵되는데 로그에서 알아차리기 어려웠던 문제가 실제로 있었다."""
+    engine = create_engine("sqlite:///:memory:")  # clubs 테이블을 일부러 만들지 않음
+
+    alias_map = db._load_alias_map(engine)
+
+    assert alias_map == {}
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.err
+    assert "clubs" in captured.err
 
 
 def _club_names(connection, article_id):

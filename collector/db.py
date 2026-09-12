@@ -5,6 +5,7 @@ backend(Spring Boot)와 동일한 스키마(`docs/DB_SCHEMA.md` 참고)를 사�
 """
 
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from typing import Iterable
@@ -15,7 +16,7 @@ from sqlalchemy.engine import Engine
 
 from article_classifier import classify_category
 from body_image_extractor import fetch_body_images
-from club_matcher import build_alias_map, detect_clubs, fetch_clubs
+from club_matcher import build_alias_map, detect_clubs, fetch_clubs_from_db
 from player_extractor import build_excluded_names, extract_player_candidates
 from reporter_detector import detect_quoted_reporter, resolve_source_tier
 from rss_collector import CollectedArticle
@@ -45,19 +46,25 @@ def get_engine() -> Engine:
     return create_engine(db_url, pool_pre_ping=True)
 
 
-def _load_alias_map() -> dict:
-    """백엔드 GET /clubs를 한 번 호출해 구단 별칭 맵을 만든다.
+def _load_alias_map(engine: Engine) -> dict:
+    """clubs 테이블에서 구단 별칭 맵을 만든다.
 
-    백엔드가 떠 있지 않거나 호출에 실패하면(collector가 백엔드보다 먼저 실행되는 경우 등)
-    빈 맵을 반환한다 — 이 경우 본문 기반 구단 감지는 건너뛰고 소스별 forced_club만 적용된다.
+    예전에는 백엔드 GET /clubs를 HTTP로 호출했는데, 백엔드가 떠 있지 않거나 다른
+    포트에 떠 있으면 구단 자동 태깅이 조용히 통째로 스킵되는 문제가 실제로 있었다
+    (2026-09-11 백필, 2026-09-12 백필 중 각각 발생 확인). collector가 backend와
+    같은 DB를 직접 보고 있으므로 club_matcher.fetch_clubs_from_db()로 바꿔 이
+    의존성 자체를 없앴다 — 이제 원칙적으로 실패할 일이 없지만(articles 저장에
+    쓰는 것과 같은 DB 연결이라 이게 안 되면 저장 자체도 안 됨), 혹시 clubs
+    테이블이 아직 없는 등 예외적인 경우를 대비해 실패해도 수집 자체는 막지 않되
+    stderr에 눈에 띄게 남긴다(예전처럼 stdout에 조용히 한 줄만 남기지 않는다).
     """
     try:
-        return build_alias_map(fetch_clubs())
-    except Exception as error:  # noqa: BLE001 - 백엔드 연결 실패는 수집 자체를 막지 않는다
-        # Windows 콘솔(cp949)에서 em dash(—)를 인코딩하지 못해 print() 자체가 죽는 것을
-        # 막기 위해 일반 하이픈을 쓴다(2026-09-11, 백엔드 미기동 상태로 백필 실행 중 실제로
-        # UnicodeEncodeError가 발생해 배치 전체가 중단된 것을 확인함).
-        print(f"GET /clubs 호출 실패 - 구단 자동 태깅을 건너뜁니다: {error}")
+        return build_alias_map(fetch_clubs_from_db(engine))
+    except Exception as error:  # noqa: BLE001 - clubs 조회 실패가 수집 자체를 막지 않는다
+        print(
+            f"[WARNING] clubs 테이블 조회 실패 - 구단 자동 태깅을 건너뜁니다: {error}",
+            file=sys.stderr,
+        )
         return {}
 
 
@@ -73,7 +80,7 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
 
     반환값은 새로 저장된 기사 수다. 이미 저장된 기사(original_url 중복)는 건너뛴다.
     """
-    alias_map = _load_alias_map()
+    alias_map = _load_alias_map(engine)
     excluded_names = build_excluded_names(alias_map, _reporter_aliases())
     saved = 0
     with engine.begin() as connection:

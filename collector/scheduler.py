@@ -59,6 +59,11 @@ def run_translation_job():
         env=env,
         capture_output=True,
         text=True,
+        # translate.py의 한글 출력은 UTF-8로 쓰인다(자식 프로세스가 PYTHONIOENCODING을
+        # 상속받음). encoding을 지정하지 않으면 text=True가 시스템 기본 코드페이지로
+        # 디코딩을 시도하는데, 한국어 Windows의 기본 cp949는 UTF-8 바이트를 못 읽어
+        # UnicodeDecodeError가 난다(실제로 스케줄러 운영 중 발생 확인).
+        encoding="utf-8",
     )
 
     if result.stdout:

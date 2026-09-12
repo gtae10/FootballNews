@@ -1,4 +1,6 @@
-from club_matcher import build_alias_map, detect_clubs
+from sqlalchemy import create_engine, text
+
+from club_matcher import build_alias_map, detect_clubs, fetch_clubs_from_db
 
 CLUBS = [
     {"id": 1, "name": "Liverpool", "league": "EPL"},
@@ -66,3 +68,25 @@ def test_detect_clubs_matches_real_betis_short_form():
     result = detect_clubs("Champions League Dark Horse Power Ranking: Roma, Betis, Fenerbahce", alias_map)
 
     assert "Real Betis" in result
+
+
+def test_fetch_clubs_from_db_reads_clubs_table_directly():
+    """백엔드 HTTP API 없이 clubs 테이블에서 직접 구단 목록을 가져올 수 있어야 한다 —
+    백엔드가 떠 있지 않거나 다른 포트에 떠 있으면 구단 태깅이 통째로 스킵되던
+    문제를 구조적으로 없애기 위한 변경."""
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text("CREATE TABLE clubs (id INTEGER PRIMARY KEY, name TEXT, league TEXT)")
+        )
+        connection.execute(
+            text("INSERT INTO clubs (id, name, league) VALUES (1, 'Liverpool', 'EPL')")
+        )
+        connection.execute(
+            text("INSERT INTO clubs (id, name, league) VALUES (2, 'Real Betis', 'LA_LIGA')")
+        )
+
+    clubs = fetch_clubs_from_db(engine)
+
+    assert {"id": 1, "name": "Liverpool", "league": "EPL"} in clubs
+    assert {"id": 2, "name": "Real Betis", "league": "LA_LIGA"} in clubs

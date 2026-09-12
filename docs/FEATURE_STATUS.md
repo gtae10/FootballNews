@@ -193,7 +193,7 @@
 
 ### 17. RSS 제목/본문 HTML 엔티티 이중 인코딩 정리
 
-**✅ 완료** (커밋 예정, 2026-09-12)
+**✅ 완료** (커밋 `dd7a349`, 2026-09-12)
 
 - 문제 발견 경위: README 스크린샷을 찍으려고 피드 페이지를 열었다가 "Romano reveals &#8216;important moment&#8217;..."처럼 제목에 글자 대신 HTML 엔티티 코드가 그대로 노출되는 것을 실제로 확인함
 - 원인: 일부 워드프레스 계열 RSS가 엔티티를 이중 인코딩해서 내려주는데(`&amp;#8217;` → XML 파싱 후 `&#8217;`), `collector/rss_collector.py`가 `feedparser`의 1차 파싱 결과를 그대로 `title_original`/`content_original`에 저장해 2차 디코딩이 안 되고 있었음
@@ -202,6 +202,22 @@
 - 테스트: `collector/tests/test_rss_collector.py`에 이중 인코딩 디코딩 회귀 테스트 1개 추가 — collector 전체 165개 통과
 - 알려진 한계: 이미 번역 완료된 기사의 한국어 요약(`content_ko`)은 재번역하지 않음(비용 문제) — 영어 원문(`title_original`/`content_original`)은 깨끗해졌지만, 그 이전에 생성된 한국어 번역 결과 자체에 엔티티 잔재가 섞여 있었다면 그대로 남아있을 수 있음(표본 확인 결과 번역 과정에서 LLM이 대부분 자연스럽게 처리해 실제 영향은 적어 보였음)
 
+### 18. 스케줄러 상시 실행 중 발견한 버그 2건 (cp949 디코딩 에러, 백엔드 의존성)
+
+**✅ 완료** (커밋 예정, 2026-09-12)
+
+- 배경: 사용자 요청으로 `collector/scheduler.py`를 30분 주기 상시 백그라운드 프로세스로 처음 실행했는데, 실행 중 실제 에러 2건을 발견함
+- **버그 1 — 번역 서브프로세스 출력 디코딩 실패**: `run_translation_job()`이 `subprocess.run(["python", "translate.py"], ..., text=True)`로 자식 프로세스를 실행하는데, `encoding`을 지정하지 않아 한국어 Windows의 기본 코드페이지(cp949)로 디코딩을 시도 — 자식은 UTF-8로 출력하므로 `UnicodeDecodeError`가 발생(`Exception in thread Thread-1 (_readerthread)`로 로그에 남음). **실제 영향 조사 결과: 데이터 손실은 0건.** 이 에러는 subprocess 내부 리더 스레드에서 나서 부모 프로세스(scheduler.py)로 전파되지 않고, 자식 프로세스(translate.py) 자체는 끝까지 정상 실행되어 DB에 번역 결과를 그대로 저장함 — 실제로 이 사건이 벌어진 사이클에서 신규 기사 27건 중 21건이 정상 번역·저장된 것을 DB로 확인함(나머지 6건은 버그와 무관하게 `content_original`이 비어 있어 가드가 정상적으로 건너뜀). 즉 이 버그의 실질적 영향은 "스케줄러 자체 로그에 결과가 안 남고 트레이스백만 남는다"는 가시성 문제였지 데이터 유실이 아니었음
+  - 수정: `subprocess.run(...)`에 `encoding="utf-8"` 명시
+  - 테스트: `collector/tests/test_scheduler.py`에 1개 추가 — collector 전체 통과
+- **버그 2 — 백엔드가 안 떠 있으면(또는 다른 포트에 떠 있으면) 구단 자동 태깅이 스킵됨**: `collector/club_matcher.py`의 `fetch_clubs()`가 백엔드 `GET /clubs`를 HTTP로 호출했는데, 실패하면 `db.py`의 `_load_alias_map()`이 예외를 잡고 빈 맵을 반환해 본문 기반 구단 감지 자체가 전부 스킵됐음(로그에 한 줄만 남아 눈에 띄기 어려움). 이 세션 중 실제로 두 차례 발생(2026-09-11 백필, 2026-09-12 백필 — 둘 다 이미 발견해 `retag_articles.py --all`로 복구한 바 있음, 위 5/14번 참고)
+  - **구조적 수정**: HTTP 호출을 아예 없애고 `club_matcher.fetch_clubs_from_db(engine)`(신규)로 `clubs` 테이블을 직접 조회하도록 바꿈 — collector는 어차피 backend와 같은 MySQL을 보고 있어 이 HTTP 의존성 자체가 불필요했다고 판단함(collector가 기사 저장에 쓰는 것과 같은 DB 연결). `db.py`(`_load_alias_map`), `retag_articles.py`, `build_rumor_threads.py` 세 호출부 모두 전환. 이제 collector 배치 작업들은 백엔드(Spring Boot)가 떠 있는지 여부와 완전히 무관하게 동작함 — 백엔드는 프론트엔드가 브라우징할 때만 필요
+  - 보조 조치: 그래도 `clubs` 테이블 조회 자체가 실패하는 극단적 경우(예: 스키마 마이그레이션 전)를 대비해 try/except는 유지하되, 기존엔 stdout에 한 줄만 남기던 것을 `[WARNING]` 태그를 붙여 stderr로 남기도록 바꿔 눈에 띄게 함
+  - `club_matcher.fetch_clubs()`(HTTP 버전)와 `DEFAULT_BACKEND_API_URL`/`COLLECTOR_BACKEND_API_URL`은 더 이상 쓰는 곳이 없어 완전히 제거함
+  - 테스트: `test_club_matcher.py`에 `fetch_clubs_from_db` 1개, `test_db.py`에 `_load_alias_map` 성공/실패(경고 로그 확인) 2개 추가
+  - 과거 누락 데이터 재확인(요청 4/5번): `retag_articles.py --all`을 다시 실행 → "재태깅할 기사가 없습니다"(추가로 발견된 누락 없음, 이전 세션에서 이미 다 복구됨을 재확인). 0건 구단 20개(위 5번의 최종 목록과 동일), 태그 없는 기사 203/1348건 — 전부 버그가 아니라 실제로 어떤 추적 구단도 언급하지 않는 기사(리그 전반 이슈 등)로 판단
+  - 테스트: collector 전체 169개 통과
+
 ---
 
 ## 테스트 스위트 전체 결과 (2026-09-12 재실행 기준, 커밋 전 최종 확인)
@@ -209,7 +225,7 @@
 | 모듈 | 결과 | 비고 |
 |---|---|---|
 | backend (`./gradlew test --rerun`) | ✅ BUILD SUCCESSFUL, 58개 | ⚠️ 이 프로젝트는 `build.gradle`에서 빌드 출력을 `%TEMP%/liverpool-news-backend-build`로 리다이렉트함(OneDrive 동기화 문제 회피) — `backend/build/`(프로젝트 폴더 안)의 결과는 stale 데이터이니 참고하지 말 것 |
-| collector (`pytest tests/`) | ✅ 165개 테스트, 0 실패 | 이 세션에서 155 → 165(본문 텍스트 크롤링 6개, Real Betis 별칭 1개, 전체 재태깅 2개, HTML 엔티티 디코딩 1개 추가) |
+| collector (`pytest tests/`) | ✅ 169개 테스트, 0 실패 | 이 세션에서 155 → 169(본문 텍스트 크롤링 6, Real Betis 별칭 1, 전체 재태깅 2, HTML 엔티티 디코딩 1, 스케줄러 인코딩 1, DB 직접 조회 3 추가) |
 | translator (`pytest tests/`) | ✅ 63개 테스트, 0 실패 | 이 세션에서 59 → 63(본문 없는 기사 가드 2개 추가) |
 | frontend-web (`vitest run`) | ✅ 11개 파일, 54개 테스트, 0 실패 | 16번(UI 개편) 작업으로 `FeedPage.test.jsx`에 4개 추가(50 → 54), 2026-09-12 재실행 기준 |
 
@@ -217,12 +233,12 @@
 
 | 테이블/항목 | 값 |
 |---|---|
-| articles | **1321건** (세션 시작 시점 847건 — 위 14번 2차 백필 확대 참고) |
-| article_clubs | **1577행** (0건 구단 23 → 20개로 감소, 위 5번 참고) |
+| articles | **1348건** (세션 시작 시점 847건 — 위 14번 2차 백필 확대 + 스케줄러 상시 수집 반영) |
+| article_clubs | **1604행** (0건 구단 23 → 20개로 감소 후 안정, 위 5/18번 참고) |
 | article_images | 1021행 (2026-09-11 기준, 이번 세션 신규 백필분 474건에는 아직 소급 크롤링 안 함 — 필요 시 `backfill_article_images.py` 재실행 필요) |
 | articles.quoted_reporter 채워짐 | 확인 안 함(이번 세션 미변경 영역) |
 | rumor_threads / rumor_thread_articles | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 기사 유입되며 수치는 변함) |
 | users | 1건 |
 | user_preferences | 1건 (favorite_club_id: Liverpool로 설정함 — 이번 세션에서 실사용 데이터 처음 생성, 위 4번 참고) |
-| translations | **1303건 완료**, 18건 미번역(`status='COLLECTED'`, 만료된 라이브 블로그 — 본문 확보 불가로 확인됨, 위 11번 3차 실행 참고) |
+| translations | **1324건 완료**, 24건 미번역(`status='COLLECTED'`, 전부 `content_original` 빈 만료 라이브 블로그 — 본문 확보 불가로 확인됨, 위 11/18번 참고) |
 | clubs | 50건 |

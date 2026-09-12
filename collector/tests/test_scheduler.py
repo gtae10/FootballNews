@@ -42,6 +42,19 @@ def test_run_translation_job_runs_translate_py_in_translator_directory(mock_run)
 
 
 @patch("scheduler.subprocess.run")
+def test_run_translation_job_decodes_subprocess_output_as_utf8(mock_run):
+    """translate.py의 한글 출력을 시스템 기본 코드페이지(한국어 Windows의 cp949 등)가
+    아니라 UTF-8로 디코딩해야 한다 — 지정하지 않으면 실제 운영 중 UnicodeDecodeError가
+    발생하는 것으로 확인됨."""
+    mock_run.return_value = MagicMock(returncode=0, stdout="번역 완료: 3건", stderr="")
+
+    scheduler.run_translation_job()
+
+    _, kwargs = mock_run.call_args
+    assert kwargs["encoding"] == "utf-8"
+
+
+@patch("scheduler.subprocess.run")
 def test_run_translation_job_defaults_engine_to_openai_when_unset(mock_run):
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 

@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 import db
-from club_matcher import build_alias_map, detect_clubs, fetch_clubs
+from club_matcher import build_alias_map, detect_clubs, fetch_clubs_from_db
 from sources import RSS_SOURCES
 
 UNTAGGED_LABEL = "(태깅 안 됨)"
@@ -136,7 +136,7 @@ def main() -> None:
     args = parser.parse_args()
 
     engine = db.get_engine()
-    alias_map = build_alias_map(fetch_clubs())
+    alias_map = build_alias_map(fetch_clubs_from_db(engine))
 
     if args.all:
         counts = retag_all_articles_for_new_aliases(engine, alias_map)

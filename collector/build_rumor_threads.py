@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 import db
-from club_matcher import build_alias_map, fetch_clubs
+from club_matcher import build_alias_map, fetch_clubs_from_db
 from player_extractor import build_excluded_names, extract_player_candidates
 from rumor_clusterer import cluster_article, detect_story_stage
 from trusted_reporters import TRUSTED_REPORTERS
@@ -87,7 +87,7 @@ def build_threads_for_unclustered(engine: Engine, excluded_names: set) -> Counte
 
 def main() -> None:
     engine = db.get_engine()
-    alias_map = build_alias_map(fetch_clubs())
+    alias_map = build_alias_map(fetch_clubs_from_db(engine))
     excluded_names = build_excluded_names(alias_map, _reporter_aliases())
 
     counts = build_threads_for_unclustered(engine, excluded_names)
