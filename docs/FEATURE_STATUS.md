@@ -120,6 +120,7 @@
   - 남은 한계였음 → **바로 이어서 크롤링 시도함**: `collector/body_text_extractor.py`(신규, `body_image_extractor.py`와 동일한 본문 컨테이너 셀렉터 재사용) + `collector/backfill_missing_content.py`(신규, 1회성 배치)로 21건 전부에 대해 원문 페이지 본문 크롤링 시도. 결과: **일반 뉴스 기사 3건(423/427/676)은 본문 확보 성공**(각 6072/13780/6774자, `status`는 COLLECTED로 유지해 다음 번역 배치 대상), **라이브 블로그/라이브 매치 페이지 18건은 실패** — 원인은 크롤링 로직 문제가 아니라 Sky Sports가 만료된 라이브 블로그에 실제 본문 대신 `"Sorry, this blog is currently unavailable."` 플레이스홀더만 내려주는 것으로 직접 확인함(정적 HTTP 요청으로 확인, JS 렌더링 이슈 아님) — 소스 자체의 한계로 판단, 더 시도하지 않음
   - 테스트: `collector/tests/test_body_text_extractor.py`(신규, 6개) — 정상 추출/바이라인·타임스탬프 노이즈 필터링/라이브 블로그 만료 감지/컨테이너 없음/너무 짧음/요청 실패 케이스. collector 전체 161개 통과
   - 자동화 제안(실행 안 함, 사용자 판단 대기): `collector/scheduler.py`는 이미 수집 직후 번역 배치를 자동 실행하도록 연결돼 있음(12번 참고)이지만 `collector/backfill.py`(일회성 대량 수집 스크립트)는 번역 호출이 전혀 없어, 백필 실행 후 번역이 계속 밀리는 패턴의 원인으로 보임 — backfill 실행 끝에 번역 배치를 이어 호출하는 옵션을 제안했으나 번역 API 비용 문제로 사용자가 자동 연결 여부를 아직 결정하지 않음
+- **2026-09-12 세션 3차 실행**: 구단 매칭 보강 + 백필 확대(위 5/14번 참고)로 새로 쌓인 미번역 495건에 대해 `TRANSLATOR_ENGINE=openai`로 재실행 → **477건 성공, 18건은 위 body_text_extractor로도 못 채운 만료 라이브 블로그라 가드가 정상적으로 스킵**(API 호출 없음, 실패 아님). 최종 `articles.status`: TRANSLATED **1303** / COLLECTED **18**(1321건 중 98.6%). README용 스크린샷을 이 번역 완료 상태로 다시 촬영함(`docs/screenshots/`)
 
 ### 12. translator 자동 실행 여부 (참고 — 배치 자동화)
 
@@ -223,5 +224,5 @@
 | rumor_threads / rumor_thread_articles | 확인 안 함(이번 세션 미변경 영역, 백필로 신규 기사 유입되며 수치는 변함) |
 | users | 1건 |
 | user_preferences | 1건 (favorite_club_id: Liverpool로 설정함 — 이번 세션에서 실사용 데이터 처음 생성, 위 4번 참고) |
-| translations | 826건 완료, **495건 미번역**(`status='COLLECTED'`) — 이번 세션 2차 백필로 신규 유입된 474건이 대부분. 번역 배치는 사용자 확인 후 실행 예정(자동 실행 안 함) |
+| translations | **1303건 완료**, 18건 미번역(`status='COLLECTED'`, 만료된 라이브 블로그 — 본문 확보 불가로 확인됨, 위 11번 3차 실행 참고) |
 | clubs | 50건 |
