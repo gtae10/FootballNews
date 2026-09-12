@@ -1,5 +1,6 @@
 """RSS 기반 기사 수집 모듈."""
 
+import html
 import re
 import time
 from dataclasses import dataclass
@@ -60,8 +61,11 @@ def collect_from_rss(
                 CollectedArticle(
                     source=source_name,
                     original_url=entry.get("link", ""),
-                    title_original=entry.get("title", ""),
-                    content_original=entry.get("summary", ""),
+                    # 일부 워드프레스 계열 RSS(예: "&#8217;")는 HTML 엔티티가 이중 인코딩돼
+                    # 있어 feedparser의 기본 파싱만으로는 안 풀린다 — 실제 DB에서 제목에
+                    # "&#8217;"가 그대로 노출되는 것으로 확인됨. html.unescape()로 한 번 더 푼다.
+                    title_original=html.unescape(entry.get("title", "")),
+                    content_original=html.unescape(entry.get("summary", "")),
                     published_at=published_at,
                     forced_club=forced_club,
                     source_tier=source_tier,

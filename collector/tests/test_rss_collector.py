@@ -48,6 +48,27 @@ def test_collect_from_rss_returns_parsed_articles(mock_parse):
 
 
 @patch("rss_collector.feedparser.parse")
+def test_collect_from_rss_unescapes_double_encoded_html_entities(mock_parse):
+    """일부 워드프레스 RSS는 "&#8217;"처럼 이중 인코딩된 엔티티를 그대로 내려줘서
+    화면에 글자 대신 엔티티 코드가 노출되는 문제가 실제 DB에서 발견됨."""
+    mock_entry = MagicMock()
+    mock_entry.get.side_effect = lambda key, default="": {
+        "link": "https://example.com/article/1",
+        "title": "Keane blasts Iraola&#8217;s side &#8216;all over the shop&#8217;",
+        "summary": "It&#8217;s a big moment.",
+    }.get(key, default)
+    mock_entry.published_parsed = None
+    mock_feed = MagicMock()
+    mock_feed.entries = [mock_entry]
+    mock_parse.return_value = mock_feed
+
+    articles = collect_from_rss("테스트 매체", "https://example.com/feed")
+
+    assert articles[0].title_original == "Keane blasts Iraola’s side ‘all over the shop’"
+    assert articles[0].content_original == "It’s a big moment."
+
+
+@patch("rss_collector.feedparser.parse")
 def test_collect_from_rss_published_at_is_timezone_aware(mock_parse):
     mock_feed = MagicMock()
     mock_feed.entries = [_mock_entry(published_parsed=None)]
