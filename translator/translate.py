@@ -34,7 +34,17 @@ def _prepare_input(raw_text: str) -> str:
 
 
 def translate_article(title_original: str, content_original: str) -> TranslationResult:
-    """원문 제목/본문을 번역하고, 전처리(HTML/잡음 제거) + 용어집/문장 후처리를 적용해 반환한다."""
+    """원문 제목/본문을 번역하고, 전처리(HTML/잡음 제거) + 용어집/문장 후처리를 적용해 반환한다.
+
+    content_original이 비어 있으면(RSS summary 자체가 없었던 라이브 블로그 등)
+    LLM을 호출하지 않고 바로 실패시킨다 — 본문 없이 호출하면 엔진이 정직하게
+    거부하거나, 제목만 보고 그럴듯한 내용을 지어내는(할루시네이션) 경우가 실제로
+    확인됐다. run_translation_batch()가 이 예외를 기존 실패 처리 경로로 그대로
+    잡아 status를 COLLECTED로 유지한다(본문이 나중에 채워지면 재시도 대상).
+    """
+    if not content_original or not content_original.strip():
+        raise ValueError("content_original이 비어 있어 번역을 건너뜀 (본문 없음)")
+
     clean_title = _prepare_input(title_original)
     clean_content = _prepare_input(content_original)
 

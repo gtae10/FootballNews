@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import MagicMock, patch
 
 from translate import TranslationResult, translate_article, run_translation_batch
@@ -89,6 +90,40 @@ def test_translate_article_uses_openai_engine_when_selected(mock_openai_translat
     assert result.content_ko == "번역된 요약"
     assert result.model_version == "gpt-5-mini"
     mock_openai_translate.assert_called_once()
+
+
+@pytest.mark.parametrize("blank_content", ["", "   ", None])
+@patch("argos_engine.translate")
+def test_translate_article_raises_without_calling_engine_when_content_is_blank(
+    mock_argos_translate, blank_content
+):
+    """content_original이 비어 있으면(라이브 블로그 등 RSS summary 자체가 없는 경우)
+    엔진을 호출하지 않고 바로 실패한다 — 본문 없이 호출하면 거부 응답이나
+    제목만 보고 지어낸 요약(할루시네이션)이 저장되는 문제가 실제로 있었다."""
+    with pytest.raises(ValueError):
+        translate_article("Title", blank_content)
+
+    mock_argos_translate.assert_not_called()
+
+
+@patch("translate.db")
+@patch("argos_engine.translate")
+def test_run_translation_batch_skips_article_with_blank_content(mock_argos_translate, mock_db):
+    """본문이 비어 있는 기사는 실패로 처리되어 저장되지 않고, status는 COLLECTED로
+    남는다(다음 배치에서 본문이 채워지면 재시도됨) — 나머지 기사는 정상 처리."""
+    blank_article = MagicMock(id=1, title_original="A", content_original="")
+    ok_article = MagicMock(id=2, title_original="C", content_original="D")
+    mock_db.fetch_untranslated_articles.return_value = [blank_article, ok_article]
+    mock_db.get_engine.return_value = "engine"
+    mock_argos_translate.return_value = ("제목", "요약", "argos-translate-en-ko")
+
+    count = run_translation_batch()
+
+    assert count == 1
+    mock_db.save_translation.assert_called_once()
+    _, saved_article_id, _ = mock_db.save_translation.call_args[0]
+    assert saved_article_id == 2
+    mock_argos_translate.assert_called_once()
 
 
 @patch("translate.db")
