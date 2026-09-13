@@ -1,8 +1,8 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import requests
 
-from body_text_extractor import extract_body_text, fetch_body_text
+from body_text_extractor import extract_body_text, extract_og_description, fetch_recovered_content
 
 
 def test_extract_body_text_joins_paragraphs_inside_article_tag():
@@ -62,8 +62,68 @@ def test_extract_body_text_returns_none_when_content_too_short():
     assert extract_body_text(html) is None
 
 
+def test_extract_og_description_returns_meta_tag_content():
+    html = '<html><head><meta property="og:description" content="Palmer scores late winner for Chelsea."></head></html>'
+
+    assert extract_og_description(html) == "Palmer scores late winner for Chelsea."
+
+
+def test_extract_og_description_returns_none_when_tag_missing():
+    html = "<html><head></head></html>"
+
+    assert extract_og_description(html) is None
+
+
+def test_extract_og_description_returns_none_when_content_empty():
+    html = '<html><head><meta property="og:description" content="  "></head></html>'
+
+    assert extract_og_description(html) is None
+
+
 @patch("body_text_extractor.requests.get")
-def test_fetch_body_text_returns_none_on_request_error(mock_get):
+def test_fetch_recovered_content_returns_none_on_request_error(mock_get):
     mock_get.side_effect = requests.RequestException("network error")
 
-    assert fetch_body_text("https://example.com/article/1") is None
+    assert fetch_recovered_content("https://example.com/article/1") is None
+
+
+@patch("body_text_extractor.requests.get")
+def test_fetch_recovered_content_prefers_body_text_over_og_description(mock_get):
+    html = """
+    <html><head><meta property="og:description" content="short social summary"></head>
+    <body><article>
+        <p>Palmer and Rogers have combined for nine chances this season, more than any other pair.</p>
+        <p>Their understanding on the pitch has grown since their time together at Manchester City's academy.</p>
+    </article></body></html>
+    """
+    mock_get.return_value = MagicMock(text=html, raise_for_status=lambda: None)
+
+    result = fetch_recovered_content("https://example.com/article/1")
+
+    assert "Palmer and Rogers have combined" in result
+
+
+@patch("body_text_extractor.requests.get")
+def test_fetch_recovered_content_falls_back_to_og_description_when_body_text_fails(mock_get):
+    html = '<html><head><meta property="og:description" content="Palmer scores late winner for Chelsea."></head><body><div>no article container</div></body></html>'
+    mock_get.return_value = MagicMock(text=html, raise_for_status=lambda: None)
+
+    result = fetch_recovered_content("https://example.com/article/1")
+
+    assert result == "Palmer scores late winner for Chelsea."
+
+
+@patch("body_text_extractor.requests.get")
+def test_fetch_recovered_content_returns_none_when_both_fail(mock_get):
+    html = "<html><head></head><body><div>nothing usable here</div></body></html>"
+    mock_get.return_value = MagicMock(text=html, raise_for_status=lambda: None)
+
+    assert fetch_recovered_content("https://example.com/article/1") is None
+
+
+@patch("body_text_extractor.requests.get")
+def test_fetch_recovered_content_skips_blocked_domain_without_requesting(mock_get):
+    result = fetch_recovered_content("https://www.empireofthekop.com/2026/09/some-article/")
+
+    assert result is None
+    mock_get.assert_not_called()

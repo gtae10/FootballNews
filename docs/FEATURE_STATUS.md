@@ -121,6 +121,9 @@
   - 테스트: `collector/tests/test_body_text_extractor.py`(신규, 6개) — 정상 추출/바이라인·타임스탬프 노이즈 필터링/라이브 블로그 만료 감지/컨테이너 없음/너무 짧음/요청 실패 케이스. collector 전체 161개 통과
   - 자동화 제안(실행 안 함, 사용자 판단 대기): `collector/scheduler.py`는 이미 수집 직후 번역 배치를 자동 실행하도록 연결돼 있음(12번 참고)이지만 `collector/backfill.py`(일회성 대량 수집 스크립트)는 번역 호출이 전혀 없어, 백필 실행 후 번역이 계속 밀리는 패턴의 원인으로 보임 — backfill 실행 끝에 번역 배치를 이어 호출하는 옵션을 제안했으나 번역 API 비용 문제로 사용자가 자동 연결 여부를 아직 결정하지 않음
 - **2026-09-12 세션 3차 실행**: 구단 매칭 보강 + 백필 확대(위 5/14번 참고)로 새로 쌓인 미번역 495건에 대해 `TRANSLATOR_ENGINE=openai`로 재실행 → **477건 성공, 18건은 위 body_text_extractor로도 못 채운 만료 라이브 블로그라 가드가 정상적으로 스킵**(API 호출 없음, 실패 아님). 최종 `articles.status`: TRANSLATED **1303** / COLLECTED **18**(1321건 중 98.6%). README용 스크린샷을 이 번역 완료 상태로 다시 촬영함(`docs/screenshots/`)
+- **2026-09-13 세션 추가 작업 (⚠️ 미커밋)**: `body_text_extractor.py`에 `extract_og_description()`(본문 크롤링도 실패했을 때 `<meta property="og:description">`로 마지막 폴백) 추가, `fetch_recovered_content()`가 본문→og:description 순으로 시도하도록 확장. 적용 전 **개별 기사 페이지 크롤링에 대한 robots.txt/이용약관을 9개 RSS 소스 전체 재확인**(그동안은 RSS 피드 접근만 확인했었음) — 8곳은 문제없었으나 **Empire of The Kop은 robots.txt가 링크하는 `m4ow.uk/socw/2.txt` 라이선스 계약(Football Italia/CaughtOffside를 제외시켰던 것과 동일 계약)이 검색 인덱싱 외 목적의 스크래핑/AI 학습/데이터셋 구축을 전면 금지함을 새로 발견**(상세 근거는 `collector/sources.py` 주석 참고). `_FALLBACK_CRAWL_BLOCKED_DOMAINS`로 empireofthekop.com을 폴백 크롤링에서 제외(RSS 피드 자체는 계속 사용) — 차단 도메인은 요청 자체를 보내지 않고 바로 None 반환
+  - 테스트: `collector/tests/test_body_text_extractor.py`에 차단 도메인이 `requests.get`을 호출하지 않고 스킵되는 것 1개 추가. 겸사겸사 `collector/tests/test_backfill_missing_content.py`의 기존 버그(다른 기사 남겨두는 픽스처의 본문 길이가 `MIN_CONTENT_LENGTH` 미만이라 의도와 달리 함께 삭제되던 것)를 발견해 수정. collector 전체 **181개 통과**
+  - DB 반영: 없음(아직 이 로직으로 실제 배치를 실행하지 않음) — `collector/backfill_missing_content.py`/`collector/tests/test_backfill_missing_content.py` 자체도 이번 세션 시작 시점에 이미 작업 중이던 미커밋 상태였음
 
 ### 12. translator 자동 실행 여부 (참고 — 배치 자동화)
 

@@ -52,6 +52,15 @@
     `/rss`·`/en/feed` 둘 다 실제로는 RSS가 아니라 그냥 SPA 홈페이지 HTML을 그대로
     반환함 — 확인 가능한 RSS 피드가 아예 존재하지 않아 robots.txt 판단 이전에
     기술적으로 등록 불가)
+- 2026-09-13 추가 확인: 본문/og:description 폴백 크롤링(개별 기사 페이지 직접 접속)을
+  도입하기 전, 지금까지 RSS 피드 접근만 확인했던 위 9개 소스에 대해 "기사 페이지"
+  기준으로 robots.txt를 다시 확인했다. 8곳은 문제없었지만, **Empire of The Kop만
+  robots.txt에 `tdl: https://m4ow.uk/socw/2.txt` 태그가 걸려 있음을 새로 발견** —
+  이 문서는 Football Italia/CaughtOffside를 제외시켰던 것과 동일한 "Search Only
+  Terms Contract"로, 검색 인덱싱 외 목적의 스크래핑/AI 학습/임베딩 생성/데이터셋
+  구축을 전면 금지한다(제7조, 위반 시 건당 £500). RSS 피드 자체는 계속 사용하되,
+  기사 본문 페이지 직접 크롤링(폴백 로직)에서는 `body_text_extractor.py`의
+  `_FALLBACK_CRAWL_BLOCKED_DOMAINS`로 empireofthekop.com을 제외 처리함.
 
 source_tier: 낮을수록 신뢰도가 높다고 간주한다 (1=공식/대형 매체, 2=자체 취재를 하는
 전문 매체, 3=팬 블로그 성격의 매체). "오늘의 주요 소식" 정렬에 사용된다.
