@@ -26,9 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 import db
-from body_text_extractor import fetch_recovered_content
-
-MIN_CONTENT_LENGTH = 20
+from body_text_extractor import MIN_CONTENT_LENGTH, fetch_recovered_content
 
 
 def find_short_content_articles(engine: Engine) -> list:

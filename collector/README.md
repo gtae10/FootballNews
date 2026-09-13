@@ -118,6 +118,31 @@ python backfill_article_images.py --limit 50 # 앞 50건만 처리 (테스트용
 안 함"을 구분하지 못해(둘 다 row 0개) 재실행 시 못 찾았던 기사도 다시 시도하므로,
 소스에 반복 요청을 보내게 된다는 점을 감안해 필요할 때만 실행한다.
 
+### 빈 본문 기사 정리 (본문/og:description 폴백 크롤링)
+
+```bash
+python backfill_missing_content.py  # content_original이 비어있거나 20자 미만인 기존 기사를 복구/삭제
+```
+
+RSS의 `<description>`이 비어 있는 기사(주로 Sky Sports Football 라이브 블로그)는
+`content_original`도 비어서 저장될 수 있었다. `save_articles()`(db.py)는 이제
+저장 시점에 이를 자동으로 처리한다 — 본문이 `MIN_CONTENT_LENGTH`(20자,
+`body_text_extractor.py`) 미만이면 (1) 본문 페이지 텍스트 크롤링
+(`body_text_extractor.extract_body_text`) → (2) 실패하면
+`og:description` 메타 태그(`extract_og_description`) → (3) 그래도 실패하면
+저장 자체를 건너뛴다(번역도 안 되고 보여줄 내용도 없는 죽은 데이터를 만들지
+않기 위함). 건너뛴 기사는 원문 URL과 함께 로그로 남는다. 이 스크립트는 이
+로직이 도입되기 전에 이미 저장돼 있던 기존 오염 데이터(빈/짧은 `content_original`)를
+정리하는 1회성 배치다 — 복구할 수 있는 건 복구하고, 못 살리면 연결 데이터
+(`article_clubs`/`article_images`/`rumor_thread_articles`/`translations`)까지
+함께 지운다.
+
+본문 페이지 접속(이미지 크롤링과 본문 복구 공통)은 `_FALLBACK_CRAWL_BLOCKED_DOMAINS`
+(`body_text_extractor.py`)에 등록된 도메인은 건너뛴다 — `empireofthekop.com`은
+robots.txt가 링크하는 라이선스 계약이 검색 인덱싱 외 목적의 스크래핑/AI 학습을
+전면 금지해 제외했다(`sources.py` 주석 참고). 이 도메인은 RSS 피드 접근만 계속
+쓰고, 개별 기사 페이지는 절대 요청하지 않는다.
+
 ## 파일 구성
 
 - `sources.py`: 수집 대상 소스 목록 (RSS URL, 크롤링 대상 사이트). 등록된 소스와
@@ -137,14 +162,25 @@ python backfill_article_images.py --limit 50 # 앞 50건만 처리 (테스트용
   페이지네이션으로 과거 기사까지 수집 가능하므로 실제 사용되지는 않는다)
 - `scheduler.py`: 주기적 실행 스케줄러 (30분 간격, 최신 페이지만 조회)
 - `backfill.py`: 과거 기사 백필 1회성 스크립트 (소스당 여러 페이지 순회, 요청 간 지연 포함)
-- `body_image_extractor.py`: 기사 원문 페이지를 요청해 본문 영역(`<article>` 등) 안의
-  이미지 URL을 추가로 추출하는 로직. 광고/공유버튼/아바타/로고 등은 클래스명·URL
-  패턴으로 제외하는 휴리스틱이라 완벽하지 않을 수 있다. 크롤링이 실패하면(네트워크
-  오류, 소스가 사실상 크롤링을 막는 경우 등) 빈 리스트를 반환해 기존 대표 이미지
-  하나만 남기는 폴백으로 자연스럽게 이어진다.
+- `body_image_extractor.py`: 기사 원문 페이지를 요청해(`fetch_article_html`) HTML을
+  가져오고, 본문 영역(`<article>` 등) 안의 이미지 URL을 추가로 추출하는 로직
+  (`extract_body_images`). 광고/공유버튼/아바타/로고 등은 클래스명·URL 패턴으로
+  제외하는 휴리스틱이라 완벽하지 않을 수 있다. `fetch_article_html`이 실패하면
+  (네트워크 오류, 소스가 사실상 크롤링을 막는 경우 등) None을 반환해 기존 대표
+  이미지 하나만 남기는 폴백으로 자연스럽게 이어진다. 이 페이지 접속은
+  `body_text_extractor.py`의 본문 복구와 공유된다(기사당 요청 한 번).
+- `body_text_extractor.py`: `content_original`이 비어있거나 너무 짧은 기사의 본문을
+  원문 페이지에서 대신 추출하는 로직. 본문 컨테이너 텍스트(`extract_body_text`,
+  `body_image_extractor.py`와 같은 셀렉터 재사용) → 실패하면 `og:description` 메타
+  태그(`extract_og_description`) 순으로 시도한다(`recover_content_from_html`).
+  `_FALLBACK_CRAWL_BLOCKED_DOMAINS`에 등록된 도메인(현재 `empireofthekop.com`)은
+  이용약관상 개별 기사 페이지 크롤링이 금지돼 있어 요청 자체를 보내지 않는다.
+- `backfill_missing_content.py`: 본문/og:description 폴백 도입 전에 이미 저장된
+  빈/짧은 `content_original` 기사를 소급 복구·삭제하는 1회성 배치 (위 "빈 본문
+  기사 정리" 참고)
 - `db.py`: 수집한 기사를 `articles`/`article_clubs`/`article_images` 테이블에 저장
-  (원문 URL 기준 중복 제거, 구단 자동 태깅·기자 인용 감지·본문 이미지 크롤링을
-  저장 직전에 적용)
+  (원문 URL 기준 중복 제거, 구단 자동 태깅·기자 인용 감지·본문 이미지 크롤링·
+  빈 본문 폴백 복구/스킵을 저장 직전에 적용)
 - `retag_articles.py`: article_clubs에 태그가 없는 기존 기사에 club_matcher를 소급
   적용하는 1회성 배치 (신규 저장 시에만 적용되는 구단 태깅의 공백을 메운다)
 - `retag_reporters.py`: quoted_reporter가 비어 있는 기존 기사에 기자 인용 감지를

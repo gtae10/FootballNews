@@ -235,7 +235,22 @@
   - 복구: 위 7건 중 5건은 이번 실전 검증으로 정상 재번역됨. 남은 2건(이월분)은 상시 실행 중인 scheduler.py가 다음 30분 주기에 자동으로 다시 처리함 — 수동 복구 불필요(이월 동작 자체를 실제로 보여주는 것이라 의도적으로 그대로 둠)
 - 테스트: `translator/tests/test_priority.py`(신규 7개), `test_db.py`(+4), `test_translate.py`(+4), 기존 두 파일의 in-memory DB 픽스처에 `source_tier`/`quoted_reporter`/`published_at`/`rumor_thread_articles`/`rumor_threads` 추가(스키마 확장에 맞춰 갱신) — translator 전체 63 → **78개 통과**
 
----
+### 20. 본문/og:description 폴백 크롤링 (저장 시점 빈 본문 방지)
+
+**✅ 완료** (커밋 예정 — 아래 커밋 해시 참고)
+
+- 배경: RSS `<description>`이 비어 있는 기사(주로 Sky Sports Football 라이브 블로그)는 `content_original`도 비어서 저장됐음(11번 참고). 이미 `body_text_extractor.py`(본문 크롤링)와 `backfill_missing_content.py`(1회성 정리 배치)가 있었지만, 저장 시점(`db.py`의 `save_articles()`) 자체에는 적용돼 있지 않아 새로 수집되는 기사에는 여전히 빈 본문이 쌓일 수 있었음
+- 도입 전 확인: 이 폴백이 개별 기사 페이지를 직접 크롤링하므로, 지금까지 RSS 피드 접근만 확인했던 9개 소스에 대해 robots.txt를 다시 확인함(위 robots.txt 확인 커밋 참고) — **Empire of The Kop만 문제**(robots.txt가 링크하는 `m4ow.uk/socw/2.txt` 라이선스 계약이 AI 학습/스크래핑을 전면 금지). `body_text_extractor.py`에 `_FALLBACK_CRAWL_BLOCKED_DOMAINS`로 empireofthekop.com 제외(RSS는 계속 사용)
+- 코드:
+  - `body_image_extractor.py`: `fetch_article_html()`(신규) — 페이지 요청 자체를 분리. `fetch_body_images()`는 이를 재사용하도록 리팩터링(동작 동일)
+  - `body_text_extractor.py`: `MIN_CONTENT_LENGTH`(20자, 기존엔 `backfill_missing_content.py`에만 지역 상수로 있던 것을 여기로 이동해 공유), `recover_content_from_html()`(신규, 네트워크 요청 없이 이미 받아온 HTML에서 본문→og:description 순 복구). `fetch_recovered_content()`는 `fetch_article_html()` + `recover_content_from_html()`로 재구성(동작 동일, 요청 경로만 정리)
+  - `db.py`의 `save_articles()`: 기사당 본문 페이지 요청을 **한 번만** 보내(`fetch_article_html`) 이미지 크롤링과 본문 복구가 공유. 차단 도메인은 요청 자체를 안 함. `content_original`이 `MIN_CONTENT_LENGTH` 미만이면 본문 크롤링 → og:description 순으로 복구 시도, 그래도 실패하면(또는 차단 도메인이면) 해당 기사는 저장하지 않고 `[SKIP]` 로그(원문 URL 포함)를 남김. 배치 끝에 소스별 스킵 건수 요약도 출력
+  - `backfill_missing_content.py`: 지역 상수였던 `MIN_CONTENT_LENGTH`를 `body_text_extractor`에서 import하도록 변경(중복 제거)
+- 기존 오염 데이터 정리(2026-09-13 실전 실행): DB에서 `content_original`이 비어있거나 20자 미만인 기사 **37건 발견**(Sky Sports Football 25건, Anfield Watch 12건) → `backfill_missing_content.py` 실행 → **25건 복구(전부 Sky Sports Football, 60~164자 본문 확보)**, **12건 삭제(전부 Anfield Watch, 본문/og:description 둘 다 복구 실패)**. 정리 후 고아 레코드(`article_clubs`/`article_images`/`rumor_thread_articles`/`translations`, 빈 `rumor_threads`) 전부 0건 확인. 정리 후 DB 전체에서 빈/짧은 `content_original` **0건**
+- 실전 검증(2026-09-13): `scheduler.run_collection_job()`을 실제로 1회 실행(RSS 9개 소스) → 수집 235건 중 신규 100건 저장, 1건은 Anfield Watch 기사가 본문 복구 실패로 `[SKIP]` 로그와 함께 저장되지 않고 건너뛰어짐. 실행 후 DB 전체(1443건)에서 빈/짧은 `content_original` **0건** 재확인 — 저장 시점 가드가 실제로 동작함을 라이브로 확인함
+- `translation_attempt_count` 기반 "최하위로 밀기" 로직 재검토 결과: **애초에 코드베이스에 이런 로직이 존재한 적이 없었음**(grep 0건, `translator/priority.py`는 tier/교차보도/발행일 기준일 뿐 시도 횟수 개념이 없음). 19번 항목에 "부수 발견"으로 기록된 "본문이 영구히 비어있는 tier-1 기사가 매 배치 큐 맨 앞에서 재시도됨" 문제는 코드 수정 없이 "알려진 상호작용"으로만 문서화돼 있었음. 이번 저장 시점 폴백/스킵 도입으로 빈 `content_original` 기사 자체가 DB에 존재할 수 없게 되어 **이 문제의 근본 원인이 사라짐** — 별도로 만들거나 없앨 로직이 없다고 판단. `docs/ARCHITECTURE.md`/`translator/README.md`의 해당 "알려진 상호작용" 문구를 "해결됨"으로 갱신함
+- 테스트: `collector/tests/test_body_text_extractor.py`(+2: `recover_content_from_html` 재사용, 기존 5개는 `fetch_article_html` 모킹으로 전환), `collector/tests/test_db.py`(+4: 본문 크롤링 복구/og:description 복구/차단 도메인 스킵/양쪽 다 실패 시 스킵+로그, 기존 이미지 테스트 2개는 `fetch_body_images` 대신 `fetch_article_html`+`extract_body_images` 모킹으로 전환, 짧은 content 픽스처 6곳을 20자 이상으로 수정) — collector 전체 **186개 통과**
+- 문서 갱신: `docs/ARCHITECTURE.md`(수집 스케줄러 섹션에 폴백 설명 추가, 번역 파이프라인의 "알려진 상호작용" → "해결된 과거 이슈"로 갱신), `docs/DB_SCHEMA.md`(`content_original` 설명에 폴백/스킵 규칙 추가), `collector/README.md`(새 섹션 "빈 본문 기사 정리" + 파일 구성에 `body_text_extractor.py`/`backfill_missing_content.py` 추가), `translator/README.md`(같은 "알려진 상호작용" 문구 갱신)
 
 ## 테스트 스위트 전체 결과 (2026-09-12 재실행 기준, 커밋 전 최종 확인)
 

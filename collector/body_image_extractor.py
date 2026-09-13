@@ -162,6 +162,21 @@ def extract_body_images(html: str, base_url: str, exclude_url: Optional[str] = N
     return urls
 
 
+def fetch_article_html(article_url: str) -> Optional[str]:
+    """기사 원문 페이지를 요청해 HTML을 반환한다.
+
+    실패하면(네트워크 오류, 타임아웃, 4xx/5xx) None을 반환한다. 이미지 추출과
+    본문 텍스트 복구(body_text_extractor.py)가 같은 페이지 접속을 공유해 기사
+    하나당 원문 서버 요청을 한 번만 보내도록 이 함수로 분리했다.
+    """
+    try:
+        response = requests.get(article_url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+    except requests.RequestException:
+        return None
+    return response.text
+
+
 def fetch_body_images(article_url: str, exclude_url: Optional[str] = None) -> List[str]:
     """기사 원문 페이지를 요청해 본문 이미지 URL을 추출한다.
 
@@ -169,10 +184,8 @@ def fetch_body_images(article_url: str, exclude_url: Optional[str] = None) -> Li
     반환한다 — 호출부가 실패 여부를 분기 처리할 필요 없이 항상 "리스트"를
     받아 기존 썸네일 폴백으로 자연스럽게 이어지게 하기 위함이다.
     """
-    try:
-        response = requests.get(article_url, timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-    except requests.RequestException:
+    html = fetch_article_html(article_url)
+    if html is None:
         return []
 
-    return extract_body_images(response.text, article_url, exclude_url=exclude_url)
+    return extract_body_images(html, article_url, exclude_url=exclude_url)

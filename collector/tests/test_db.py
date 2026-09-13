@@ -9,15 +9,17 @@ from db import save_articles
 from rss_collector import CollectedArticle
 
 
-# save_articles()는 기사마다 원문 페이지를 크롤링해 본문 이미지를 찾는다
-# (body_image_extractor.fetch_body_images). DB 저장 로직만 검증하는 이 파일의
-# 대부분의 테스트는 실제 네트워크 호출이나 지연(BODY_IMAGE_REQUEST_DELAY_SECONDS)
-# 없이 결정적으로 빠르게 동작해야 하므로, 기본값으로 빈 리스트를 반환하도록
-# 자동 패치한다. 이미지 저장 자체를 검증하는 테스트는 이 패치를 개별적으로
-# 덮어쓴다(@patch("db.fetch_body_images", ...)가 더 안쪽에서 적용되어 우선한다).
+# save_articles()는 기사마다 원문 페이지를 한 번 요청해(body_image_extractor.
+# fetch_article_html) 본문 이미지 추출과 본문 복구(content_original이 짧을 때)에
+# 같이 쓴다. DB 저장 로직만 검증하는 이 파일의 대부분의 테스트는 실제 네트워크
+# 호출이나 지연(BODY_IMAGE_REQUEST_DELAY_SECONDS) 없이 결정적으로 빠르게 동작해야
+# 하므로, 기본값으로 페이지 요청 자체가 실패한 것처럼(None) 패치한다 — 이 파일의
+# content_original 픽스처는 모두 MIN_CONTENT_LENGTH 이상이라 본문 복구가 필요 없고,
+# 이미지도 없는 상태로 자연스럽게 이어진다. 이미지 저장 자체를 검증하는 테스트는
+# 이 패치를 개별적으로 덮어쓴다(더 안쪽 데코레이터가 우선한다).
 @pytest.fixture(autouse=True)
 def _no_network_body_image_crawl():
-    with patch("db.fetch_body_images", return_value=[]), patch("db.time.sleep"):
+    with patch("db.fetch_article_html", return_value=None), patch("db.time.sleep"):
         yield
 
 
@@ -145,7 +147,7 @@ def test_save_articles_inserts_new_article_with_forced_club_and_tier(mock_alias_
         source="The Anfield Wrap",
         original_url="https://theanfieldwrap.com/article/1",
         title_original="Test Title",
-        content_original="Test Summary",
+        content_original="Test summary long enough to skip the recovery fallback.",
         published_at=datetime(2026, 8, 30, 10, 0),
         forced_club="Liverpool",
         source_tier=2,
@@ -171,7 +173,7 @@ def test_save_articles_persists_image_url_when_present(mock_alias_map):
         source="The Anfield Wrap",
         original_url="https://theanfieldwrap.com/article/with-image",
         title_original="Test Title",
-        content_original="Test Summary",
+        content_original="Test summary long enough to skip the recovery fallback.",
         published_at=datetime(2026, 8, 30, 10, 0),
         forced_club="Liverpool",
         source_tier=2,
@@ -192,7 +194,7 @@ def test_save_articles_stores_null_image_url_when_not_found(mock_alias_map):
         source="The Anfield Wrap",
         original_url="https://theanfieldwrap.com/article/no-image",
         title_original="Test Title",
-        content_original="Test Summary",
+        content_original="Test summary long enough to skip the recovery fallback.",
         published_at=datetime(2026, 8, 30, 10, 0),
         forced_club="Liverpool",
         source_tier=2,
@@ -252,7 +254,7 @@ def test_save_articles_skips_duplicate_original_url(mock_alias_map):
         source="Empire of The Kop",
         original_url="https://www.empireofthekop.com/article/1",
         title_original="Title",
-        content_original="Summary",
+        content_original="Summary long enough to skip the recovery fallback.",
         published_at=datetime(2026, 8, 30, 10, 0),
         forced_club="Liverpool",
         source_tier=3,
@@ -405,14 +407,15 @@ def _image_urls(connection, article_id):
 
 
 @patch("db._load_alias_map", return_value=_ALIAS_MAP)
-@patch("db.fetch_body_images", return_value=["https://example.com/body1.jpg", "https://example.com/body2.jpg"])
-def test_save_articles_stores_crawled_body_images_in_order(mock_fetch, mock_alias_map):
+@patch("db.fetch_article_html", return_value="<html>fake page</html>")
+@patch("db.extract_body_images", return_value=["https://example.com/body1.jpg", "https://example.com/body2.jpg"])
+def test_save_articles_stores_crawled_body_images_in_order(mock_extract, mock_fetch_html, mock_alias_map):
     engine = _make_engine()
     article = CollectedArticle(
         source="The Anfield Wrap",
         original_url="https://theanfieldwrap.com/article/with-body-images",
         title_original="Test Title",
-        content_original="Test Summary",
+        content_original="Test summary long enough to skip the recovery fallback.",
         published_at=datetime(2026, 8, 30, 10, 0),
         forced_club="Liverpool",
         source_tier=2,
@@ -427,24 +430,25 @@ def test_save_articles_stores_crawled_body_images_in_order(mock_fetch, mock_alia
             "https://example.com/body1.jpg",
             "https://example.com/body2.jpg",
         ]
-    mock_fetch.assert_called_once_with(
+    mock_fetch_html.assert_called_once_with("https://theanfieldwrap.com/article/with-body-images")
+    mock_extract.assert_called_once_with(
+        "<html>fake page</html>",
         "https://theanfieldwrap.com/article/with-body-images",
         exclude_url="https://theanfieldwrap.com/thumb.jpg",
     )
 
 
 @patch("db._load_alias_map", return_value=_ALIAS_MAP)
-@patch("db.fetch_body_images", return_value=[])
-def test_save_articles_stores_no_body_images_when_crawl_fails_or_finds_none(mock_fetch, mock_alias_map):
-    """본문 크롤링이 실패하거나 이미지를 못 찾으면 article_images에 아무 row도 남기지
-    않는다 — 프론트는 기존 대표 이미지(image_url) 하나만 표시하는 상태로 자연스럽게
-    폴백한다."""
+@patch("db.fetch_article_html", return_value=None)
+def test_save_articles_stores_no_body_images_when_crawl_fails_or_finds_none(mock_fetch_html, mock_alias_map):
+    """본문 페이지 요청이 실패하면 article_images에 아무 row도 남기지 않는다 —
+    프론트는 기존 대표 이미지(image_url) 하나만 표시하는 상태로 자연스럽게 폴백한다."""
     engine = _make_engine()
     article = CollectedArticle(
         source="Sky Sports Football",
         original_url="https://www.skysports.com/article/no-body-images",
         title_original="Test Title",
-        content_original="Test Summary",
+        content_original="Test summary long enough to skip the recovery fallback.",
         published_at=datetime(2026, 8, 30, 10, 0),
         forced_club=None,
         source_tier=1,
@@ -456,3 +460,120 @@ def test_save_articles_stores_no_body_images_when_crawl_fails_or_finds_none(mock
     with engine.begin() as connection:
         article_id = connection.execute(text("SELECT id FROM articles")).one().id
         assert _image_urls(connection, article_id) == []
+
+
+# 아래 4개는 RSS summary(content_original)가 비어 있는 기사에 대한 저장 시점 폴백
+# 크롤링(본문 텍스트 → og:description → 스킵)을 검증한다. 위 이미지 테스트들과
+# 마찬가지로 db.fetch_article_html을 패치해 실제 네트워크 요청 없이 검증한다.
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+@patch("db.fetch_article_html")
+def test_save_articles_recovers_empty_content_from_body_text(mock_fetch_html, mock_alias_map):
+    engine = _make_engine()
+    mock_fetch_html.return_value = """
+    <html><body><article>
+        <p>Palmer and Rogers have combined for nine chances this season, more than any other pair of teammates.</p>
+        <p>Their understanding on the pitch has grown since their time together at Manchester City's academy.</p>
+    </article></body></html>
+    """
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/live-blog-1",
+        title_original="Live blog: Liverpool vs Arsenal",
+        content_original="",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    saved_count = save_articles(engine, [article])
+
+    assert saved_count == 1
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT content_original FROM articles")).one()
+        assert "Palmer and Rogers have combined" in row.content_original
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+@patch("db.fetch_article_html")
+def test_save_articles_recovers_empty_content_from_og_description_when_body_text_fails(mock_fetch_html, mock_alias_map):
+    engine = _make_engine()
+    mock_fetch_html.return_value = (
+        '<html><head><meta property="og:description" '
+        'content="Liverpool beat Arsenal in a thrilling five-goal contest."></head>'
+        "<body><div>no article container here</div></body></html>"
+    )
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/live-blog-2",
+        title_original="Live blog: Liverpool vs Arsenal",
+        content_original="",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    saved_count = save_articles(engine, [article])
+
+    assert saved_count == 1
+    with engine.begin() as connection:
+        row = connection.execute(text("SELECT content_original FROM articles")).one()
+        assert row.content_original == "Liverpool beat Arsenal in a thrilling five-goal contest."
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+@patch("db.fetch_article_html")
+def test_save_articles_skips_empty_content_for_blocked_domain_without_fetching(mock_fetch_html, mock_alias_map, capsys):
+    """empireofthekop.com은 이용약관상 개별 기사 페이지 크롤링이 금지돼 있다
+    (_FALLBACK_CRAWL_BLOCKED_DOMAINS) — 폴백 시도 자체(요청)를 하지 않고 바로
+    건너뛰어야 한다."""
+    engine = _make_engine()
+    article = CollectedArticle(
+        source="Empire of The Kop",
+        original_url="https://www.empireofthekop.com/article/live-blog",
+        title_original="Live blog",
+        content_original="",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club="Liverpool",
+        source_tier=3,
+    )
+
+    saved_count = save_articles(engine, [article])
+
+    assert saved_count == 0
+    mock_fetch_html.assert_not_called()
+    with engine.begin() as connection:
+        count = connection.execute(text("SELECT COUNT(*) AS cnt FROM articles")).one()
+        assert count.cnt == 0
+    captured = capsys.readouterr()
+    assert "[SKIP]" in captured.err
+    assert "empireofthekop.com" in captured.err
+
+
+@patch("db._load_alias_map", return_value=_ALIAS_MAP)
+@patch("db.fetch_article_html")
+def test_save_articles_skips_and_logs_when_recovery_fails_on_both_methods(mock_fetch_html, mock_alias_map, capsys):
+    engine = _make_engine()
+    mock_fetch_html.return_value = "<html><body><div>nothing usable here</div></body></html>"
+    article = CollectedArticle(
+        source="Sky Sports Football",
+        original_url="https://www.skysports.com/article/expired-live-blog",
+        title_original="Live blog: expired",
+        content_original="",
+        published_at=datetime(2026, 8, 30, 10, 0),
+        forced_club=None,
+        source_tier=1,
+    )
+
+    saved_count = save_articles(engine, [article])
+
+    assert saved_count == 0
+    with engine.begin() as connection:
+        count = connection.execute(text("SELECT COUNT(*) AS cnt FROM articles")).one()
+        assert count.cnt == 0
+    captured = capsys.readouterr()
+    assert "[SKIP]" in captured.err
+    assert "https://www.skysports.com/article/expired-live-blog" in captured.err
+    assert "본문 확보 실패로 저장 건너뜀: 1건" in captured.err
+    assert "Sky Sports Football: 1건" in captured.err

@@ -7,6 +7,7 @@ backend(Spring Boot)와 동일한 스키마(`docs/DB_SCHEMA.md` 참고)를 사�
 import os
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -15,7 +16,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from article_classifier import classify_category
-from body_image_extractor import fetch_body_images
+from body_image_extractor import extract_body_images, fetch_article_html
+from body_text_extractor import MIN_CONTENT_LENGTH, _is_fallback_crawl_blocked, recover_content_from_html
 from club_matcher import build_alias_map, detect_clubs, fetch_clubs_from_db
 from player_extractor import build_excluded_names, extract_player_candidates
 from reporter_detector import detect_quoted_reporter, resolve_source_tier
@@ -83,6 +85,7 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
     alias_map = _load_alias_map(engine)
     excluded_names = build_excluded_names(alias_map, _reporter_aliases())
     saved = 0
+    skipped_by_source: Counter = Counter()
     with engine.begin() as connection:
         for article in articles:
             already_exists = connection.execute(
@@ -92,12 +95,36 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
             if already_exists:
                 continue
 
-            detected_reporter = detect_quoted_reporter(article.title_original, article.content_original)
+            # 본문 페이지 접속은 기사당 한 번만 한다 — 아래 이미지 크롤링과 본문
+            # 복구(둘 다 있으면)가 이 결과를 같이 쓴다. 이용약관상 크롤링이 금지된
+            # 도메인(_is_fallback_crawl_blocked)은 요청 자체를 보내지 않는다.
+            page_html = None
+            if not _is_fallback_crawl_blocked(article.original_url):
+                page_html = fetch_article_html(article.original_url)
+                time.sleep(BODY_IMAGE_REQUEST_DELAY_SECONDS)
+
+            content_original = article.content_original
+            if not content_original or len(content_original.strip()) < MIN_CONTENT_LENGTH:
+                recovered = recover_content_from_html(page_html) if page_html else None
+                if recovered and len(recovered.strip()) >= MIN_CONTENT_LENGTH:
+                    content_original = recovered
+                else:
+                    # RSS summary도 비어 있고 본문 페이지에서도 못 살렸으면(또는
+                    # 애초에 차단 도메인이면) 번역도 안 되고 보여줄 내용도 없는
+                    # 죽은 기사를 저장하지 않고 건너뛴다.
+                    skipped_by_source[article.source] += 1
+                    print(
+                        f"[SKIP] 본문 확보 실패로 기사 저장 건너뜀 - source={article.source} url={article.original_url}",
+                        file=sys.stderr,
+                    )
+                    continue
+
+            detected_reporter = detect_quoted_reporter(article.title_original, content_original)
             quoted_reporter = detected_reporter["name"] if detected_reporter else None
             effective_source_tier = resolve_source_tier(article.source_tier, detected_reporter)
 
             detected_clubs = set(
-                detect_clubs(f"{article.title_original}\n{article.content_original}", alias_map)
+                detect_clubs(f"{article.title_original}\n{content_original}", alias_map)
             )
             if article.forced_club:
                 detected_clubs.add(article.forced_club)
@@ -110,12 +137,12 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
             story_stage = "UNKNOWN"
             player_candidates: list = []
             if detected_clubs:
-                story_stage = detect_story_stage(article.title_original, article.content_original)
+                story_stage = detect_story_stage(article.title_original, content_original)
                 if story_stage != "UNKNOWN":
                     player_candidates = extract_player_candidates(article.title_original, excluded_names)
             is_transfer_clustered = bool(detected_clubs) and story_stage != "UNKNOWN" and bool(player_candidates)
 
-            category = classify_category(article.title_original, article.content_original, is_transfer_clustered)
+            category = classify_category(article.title_original, content_original, is_transfer_clustered)
 
             result = connection.execute(
                 text(
@@ -134,7 +161,7 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     "source": article.source,
                     "original_url": article.original_url,
                     "title_original": article.title_original,
-                    "content_original": article.content_original,
+                    "content_original": content_original,
                     "published_at": article.published_at,
                     "collected_at": datetime.now(timezone.utc),
                     "source_tier": effective_source_tier,
@@ -159,11 +186,16 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     player_candidates, detected_clubs, story_stage,
                 )
 
-            # 본문 페이지를 직접 요청해 이미지를 추가로 찾는다. 실패하거나(네트워크
-            # 오류 등) 이미지를 하나도 못 찾으면 빈 리스트가 반환되므로, 이 경우
-            # article_images에는 아무것도 저장되지 않고 기존 대표 이미지(image_url)
-            # 하나만 남는다 — 프론트가 자연스럽게 그 상태로 폴백한다.
-            body_images = fetch_body_images(article.original_url, exclude_url=article.image_url)
+            # 위에서 이미 받아온 본문 페이지 HTML에서 이미지를 추가로 찾는다(요청을
+            # 다시 보내지 않는다). 페이지를 못 받았거나(차단 도메인, 네트워크 오류
+            # 등) 이미지를 하나도 못 찾으면 빈 리스트이므로, 이 경우 article_images에는
+            # 아무것도 저장되지 않고 기존 대표 이미지(image_url) 하나만 남는다 —
+            # 프론트가 자연스럽게 그 상태로 폴백한다.
+            body_images = (
+                extract_body_images(page_html, article.original_url, exclude_url=article.image_url)
+                if page_html
+                else []
+            )
             for position, image_url in enumerate(body_images):
                 connection.execute(
                     text(
@@ -174,8 +206,13 @@ def save_articles(engine: Engine, articles: Iterable[CollectedArticle]) -> int:
                     ),
                     {"article_id": article_id, "position": position, "image_url": image_url},
                 )
-            time.sleep(BODY_IMAGE_REQUEST_DELAY_SECONDS)
 
             saved += 1
+
+    if skipped_by_source:
+        total_skipped = sum(skipped_by_source.values())
+        print(f"본문 확보 실패로 저장 건너뜀: {total_skipped}건", file=sys.stderr)
+        for source, count in skipped_by_source.most_common():
+            print(f"  {source}: {count}건", file=sys.stderr)
 
     return saved

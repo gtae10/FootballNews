@@ -16,13 +16,16 @@ import re
 from typing import Optional
 from urllib.parse import urlparse
 
-import requests
 from bs4 import BeautifulSoup
 
-from body_image_extractor import _BODY_SELECTORS
+from body_image_extractor import _BODY_SELECTORS, fetch_article_html
 
-REQUEST_TIMEOUT_SECONDS = 10
 MIN_TEXT_LENGTH = 80
+
+# db.py의 save_articles()와 backfill_missing_content.py가 공유하는 "본문이 번역/
+# 게시에 쓸 만큼 충분히 확보됐는가" 기준. 예전엔 backfill_missing_content.py에만
+# 지역 상수로 있었는데, 저장 시점 검증도 같은 기준을 써야 해서 여기로 옮겼다.
+MIN_CONTENT_LENGTH = 20
 
 # 개별 기사 페이지 직접 크롤링이 이용약관상 금지된 도메인 (RSS 피드 자체는 계속 사용).
 # empireofthekop.com: robots.txt가 링크하는 라이선스 계약(m4ow.uk/socw/2.txt)이 검색
@@ -90,14 +93,28 @@ def extract_og_description(html: str) -> Optional[str]:
     return content or None
 
 
+def recover_content_from_html(html: str) -> Optional[str]:
+    """이미 받아온 페이지 HTML에서 본문(extract_body_text) → 실패하면
+    og:description(extract_og_description) 순으로 복구를 시도한다.
+
+    네트워크 요청은 하지 않는다 — 이미지 추출(body_image_extractor.py)과 페이지
+    접속을 공유하는 호출부(db.py)가 이미 받아온 HTML을 그대로 넘길 때 쓴다.
+    """
+    body_text = extract_body_text(html)
+    if body_text:
+        return body_text
+
+    return extract_og_description(html)
+
+
 def fetch_recovered_content(article_url: str) -> Optional[str]:
     """RSS summary가 비어 있거나 너무 짧은 기사의 본문을 원문 페이지에서 복구한다.
 
-    페이지를 한 번만 요청해 본문 텍스트(extract_body_text) → 실패하면
-    og:description(extract_og_description) 순으로 시도한다. 요청 자체가
-    실패하거나(네트워크 오류, 타임아웃, 4xx/5xx) 둘 다 못 찾으면 None을
-    반환한다 — 호출부(collector/db.py)가 이 경우 기사를 아예 저장하지 않고
-    건너뛴다(번역도 안 되고 보여줄 내용도 없는 죽은 데이터를 만들지 않기 위함).
+    페이지를 한 번만 요청해 본문 텍스트 → 실패하면 og:description 순으로
+    시도한다(recover_content_from_html). 요청 자체가 실패하거나(네트워크 오류,
+    타임아웃, 4xx/5xx) 둘 다 못 찾으면 None을 반환한다 — 호출부가 이 경우 기사를
+    아예 저장하지 않고 건너뛴다(번역도 안 되고 보여줄 내용도 없는 죽은 데이터를
+    만들지 않기 위함).
 
     이용약관상 개별 기사 페이지 크롤링이 금지된 도메인(_FALLBACK_CRAWL_BLOCKED_DOMAINS)은
     요청 자체를 보내지 않고 바로 None을 반환한다.
@@ -105,14 +122,8 @@ def fetch_recovered_content(article_url: str) -> Optional[str]:
     if _is_fallback_crawl_blocked(article_url):
         return None
 
-    try:
-        response = requests.get(article_url, timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-    except requests.RequestException:
+    html = fetch_article_html(article_url)
+    if html is None:
         return None
 
-    body_text = extract_body_text(response.text)
-    if body_text:
-        return body_text
-
-    return extract_og_description(response.text)
+    return recover_content_from_html(html)

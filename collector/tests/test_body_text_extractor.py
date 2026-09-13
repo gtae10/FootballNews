@@ -1,8 +1,11 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import requests
-
-from body_text_extractor import extract_body_text, extract_og_description, fetch_recovered_content
+from body_text_extractor import (
+    extract_body_text,
+    extract_og_description,
+    fetch_recovered_content,
+    recover_content_from_html,
+)
 
 
 def test_extract_body_text_joins_paragraphs_inside_article_tag():
@@ -80,15 +83,13 @@ def test_extract_og_description_returns_none_when_content_empty():
     assert extract_og_description(html) is None
 
 
-@patch("body_text_extractor.requests.get")
-def test_fetch_recovered_content_returns_none_on_request_error(mock_get):
-    mock_get.side_effect = requests.RequestException("network error")
-
+@patch("body_text_extractor.fetch_article_html", return_value=None)
+def test_fetch_recovered_content_returns_none_on_request_error(mock_fetch_html):
     assert fetch_recovered_content("https://example.com/article/1") is None
 
 
-@patch("body_text_extractor.requests.get")
-def test_fetch_recovered_content_prefers_body_text_over_og_description(mock_get):
+@patch("body_text_extractor.fetch_article_html")
+def test_fetch_recovered_content_prefers_body_text_over_og_description(mock_fetch_html):
     html = """
     <html><head><meta property="og:description" content="short social summary"></head>
     <body><article>
@@ -96,34 +97,46 @@ def test_fetch_recovered_content_prefers_body_text_over_og_description(mock_get)
         <p>Their understanding on the pitch has grown since their time together at Manchester City's academy.</p>
     </article></body></html>
     """
-    mock_get.return_value = MagicMock(text=html, raise_for_status=lambda: None)
+    mock_fetch_html.return_value = html
 
     result = fetch_recovered_content("https://example.com/article/1")
 
     assert "Palmer and Rogers have combined" in result
 
 
-@patch("body_text_extractor.requests.get")
-def test_fetch_recovered_content_falls_back_to_og_description_when_body_text_fails(mock_get):
+@patch("body_text_extractor.fetch_article_html")
+def test_fetch_recovered_content_falls_back_to_og_description_when_body_text_fails(mock_fetch_html):
     html = '<html><head><meta property="og:description" content="Palmer scores late winner for Chelsea."></head><body><div>no article container</div></body></html>'
-    mock_get.return_value = MagicMock(text=html, raise_for_status=lambda: None)
+    mock_fetch_html.return_value = html
 
     result = fetch_recovered_content("https://example.com/article/1")
 
     assert result == "Palmer scores late winner for Chelsea."
 
 
-@patch("body_text_extractor.requests.get")
-def test_fetch_recovered_content_returns_none_when_both_fail(mock_get):
+@patch("body_text_extractor.fetch_article_html")
+def test_fetch_recovered_content_returns_none_when_both_fail(mock_fetch_html):
     html = "<html><head></head><body><div>nothing usable here</div></body></html>"
-    mock_get.return_value = MagicMock(text=html, raise_for_status=lambda: None)
+    mock_fetch_html.return_value = html
 
     assert fetch_recovered_content("https://example.com/article/1") is None
 
 
-@patch("body_text_extractor.requests.get")
-def test_fetch_recovered_content_skips_blocked_domain_without_requesting(mock_get):
+@patch("body_text_extractor.fetch_article_html")
+def test_fetch_recovered_content_skips_blocked_domain_without_requesting(mock_fetch_html):
     result = fetch_recovered_content("https://www.empireofthekop.com/2026/09/some-article/")
 
     assert result is None
-    mock_get.assert_not_called()
+    mock_fetch_html.assert_not_called()
+
+
+@patch("body_text_extractor.fetch_article_html")
+def test_recover_content_from_html_reuses_already_fetched_page(mock_fetch_html):
+    """db.py처럼 이미 받아온 HTML이 있을 때는 네트워크 요청 없이 그 문자열만으로
+    본문/og:description을 복구할 수 있어야 한다(이미지 크롤링과 페이지 접속 공유)."""
+    html = '<html><head><meta property="og:description" content="Palmer scores late winner for Chelsea."></head><body><div>no article container</div></body></html>'
+
+    result = recover_content_from_html(html)
+
+    assert result == "Palmer scores late winner for Chelsea."
+    mock_fetch_html.assert_not_called()

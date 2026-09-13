@@ -10,7 +10,7 @@
 | source | VARCHAR | 출처 매체명 |
 | original_url | VARCHAR (UNIQUE) | 원문 URL |
 | title_original | TEXT | 원문 제목 |
-| content_original | TEXT | 원문 본문 |
+| content_original | TEXT | 원문 본문. RSS summary가 비어있거나 `MIN_CONTENT_LENGTH`(20자, `collector/body_text_extractor.py`) 미만이면 저장 전에 원문 페이지 본문 크롤링 → 실패하면 `og:description` 메타 태그 순으로 복구를 시도하고(`collector/db.py`의 `save_articles()`), 둘 다 실패하면(또는 이용약관상 크롤링이 금지된 도메인이면, `_FALLBACK_CRAWL_BLOCKED_DOMAINS` 참고) 그 기사는 아예 저장하지 않는다 — 그래서 `articles`에 저장된 행은 항상 20자 이상의 `content_original`을 가진다 |
 | published_at | TIMESTAMP | 원문 발행일 |
 | collected_at | TIMESTAMP | 수집 시각 |
 | status | VARCHAR | COLLECTED / TRANSLATED / PUBLISHED |
