@@ -237,7 +237,7 @@
 
 ### 20. 본문/og:description 폴백 크롤링 (저장 시점 빈 본문 방지)
 
-**✅ 완료** (커밋 예정 — 아래 커밋 해시 참고)
+**✅ 완료** (커밋 `26803a5`, 2026-09-13)
 
 - 배경: RSS `<description>`이 비어 있는 기사(주로 Sky Sports Football 라이브 블로그)는 `content_original`도 비어서 저장됐음(11번 참고). 이미 `body_text_extractor.py`(본문 크롤링)와 `backfill_missing_content.py`(1회성 정리 배치)가 있었지만, 저장 시점(`db.py`의 `save_articles()`) 자체에는 적용돼 있지 않아 새로 수집되는 기사에는 여전히 빈 본문이 쌓일 수 있었음
 - 도입 전 확인: 이 폴백이 개별 기사 페이지를 직접 크롤링하므로, 지금까지 RSS 피드 접근만 확인했던 9개 소스에 대해 robots.txt를 다시 확인함(위 robots.txt 확인 커밋 참고) — **Empire of The Kop만 문제**(robots.txt가 링크하는 `m4ow.uk/socw/2.txt` 라이선스 계약이 AI 학습/스크래핑을 전면 금지). `body_text_extractor.py`에 `_FALLBACK_CRAWL_BLOCKED_DOMAINS`로 empireofthekop.com 제외(RSS는 계속 사용)
