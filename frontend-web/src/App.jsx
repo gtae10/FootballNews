@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import OnboardingGate from "./components/OnboardingGate";
+import ChatWidget from "./components/ChatWidget";
 import LoginPage from "./pages/LoginPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import FeedPage from "./pages/FeedPage";
@@ -24,6 +25,7 @@ function App() {
           <Route path="/" element={<Navigate to="/feed" replace />} />
         </Routes>
       </div>
+      <ChatWidget />
     </div>
   );
 }

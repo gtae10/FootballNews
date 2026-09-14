@@ -32,3 +32,12 @@ app:
   jwt:
     secret: ${JWT_SECRET:local-dev-only-secret-key-change-me-in-real-envs-32bytes+}
     validity-minutes: ${JWT_VALIDITY_MINUTES:10080}
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+  chat:
+    model: ${CHAT_MODEL:gpt-5-mini}
+    max-tokens: ${CHAT_MAX_TOKENS:2500}
+    max-context-articles: ${CHAT_MAX_CONTEXT_ARTICLES:5}
+    rate-limit:
+      max-requests: ${CHAT_RATE_LIMIT_MAX_REQUESTS:20}
+      window-minutes: ${CHAT_RATE_LIMIT_WINDOW_MINUTES:10}

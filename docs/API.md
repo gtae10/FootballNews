@@ -349,4 +349,54 @@ GET /reporter-suggestions/me
 
 `GET /reporter-suggestions/me`는 로그인한 사용자 본인이 제출한 제보 목록을 최신순으로 반환한다.
 
+## 채팅
+
+```
+POST /chat
+```
+
+인증 불필요(IP 기준 rate limit, 기본 10분당 20회 — `app.chat.rate-limit`). 요청 본문
+```json
+{
+  "message": "리버풀 누구 영입했어요?",
+  "history": [
+    { "role": "user", "content": "이전 질문" },
+    { "role": "assistant", "content": "이전 답변" }
+  ]
+}
+```
+
+`message`는 필수(빈 문자열 400)이며 300자 이내(초과 시 400)다. `history`는 선택이며, 최근
+10턴/턴당 300자까지만 서버가 반영한다(그 이상은 방어적으로 잘라냄 — 클라이언트가 보낸 값을
+그대로 신뢰하지 않는다).
+
+DB에서 키워드로 관련 기사를 검색해 답변 근거로 우선 사용하고(RAG), 관련 기사가 없거나
+질문과 무관하면 LLM의 일반 지식으로 답한다 — 두 경우를 반드시 구분해 표시한다
+(`docs/ARCHITECTURE.md`/`ChatService.SYSTEM_PROMPT` 참고).
+
+응답 예시
+```json
+{
+  "reply": "[저장된 기사 기반]\n리버풀은 최근 미드필더를 영입했습니다...",
+  "matchedArticleCount": 3,
+  "sourceType": "ARTICLE"
+}
+```
+
+`sourceType`은 `"ARTICLE"`(저장된 기사 근거) 또는 `"GENERAL_KNOWLEDGE"`(AI 일반 지식,
+최신 정보가 아닐 수 있음) 중 하나다. 모델이 답변 맨 앞에 붙이기로 되어 있는 표시
+(`[저장된 기사 기반]`/`[AI 일반 지식 — 최신 정보 아닐 수 있음]`)를 서버가 우선 파싱해서
+결정하고, 모델이 규칙을 안 지켜 표시가 없으면 `matchedArticleCount`로 보수적으로
+추정한다 — `matchedArticleCount`는 키워드 검색이 기계적으로 찾은 후보 수일 뿐, 실제로
+답변이 그 기사에 근거했는지를 100% 보장하지 않는다는 점에 주의(라이브 테스트에서 실제로
+무관한 기사가 걸렸는데 모델이 이를 무시하고 일반 지식으로 답한 사례가 있었음).
+프론트엔드는 `sourceType`으로 태그 색을 결정해야 한다(`matchedArticleCount`가 아니라).
+
+## 상태 코드 (채팅)
+
+| 코드 | 의미 |
+|---|---|
+| 429 | rate limit 초과 |
+| 503 | OpenAI API 호출 실패 등 채팅 서비스 오류 |
+
 향후 추가 예정: 즐겨찾기

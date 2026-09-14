@@ -26,6 +26,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(ChatRateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimit(ChatRateLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(ChatServiceException.class)
+    public ResponseEntity<ErrorResponse> handleChatServiceError(ChatServiceException e) {
+        log.error("채팅 서비스 호출 실패", e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("채팅 서비스에 일시적인 문제가 발생했습니다. 잠시 후 다시 시도해주세요."));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()

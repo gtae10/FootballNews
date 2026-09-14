@@ -161,6 +161,34 @@ class ArticleRepositoryTest {
     }
 
     @Test
+    void findByKeywordForChat은_번역_본문에만_있는_키워드도_찾는다() {
+        Article match = articleRepository.save(new Article(
+                "Liverpool FC 공식", "https://example.com/chat-1", "Liverpool sign new midfielder",
+                "content", LocalDateTime.now(), "Liverpool", 1));
+        translationRepository.save(new Translation(match, "리버풀 새 미드필더 영입",
+                "리버풀이 새로운 미드필더를 영입했다고 발표했다.", "v1"));
+
+        articleRepository.save(new Article(
+                "Arsenal News", "https://example.com/chat-2", "Arsenal sign new striker",
+                "content", LocalDateTime.now(), "Arsenal", 1));
+
+        List<Article> result = articleRepository.findByKeywordForChat("리버풀", PageRequest.of(0, 20));
+
+        assertThat(result).containsExactly(match);
+    }
+
+    @Test
+    void findByKeywordForChat은_매칭이_없으면_빈_목록을_반환한다() {
+        articleRepository.save(new Article(
+                "Liverpool FC 공식", "https://example.com/chat-3", "Liverpool unveil new kit",
+                "content", LocalDateTime.now(), "Liverpool", 1));
+
+        List<Article> result = articleRepository.findByKeywordForChat("존재하지않는키워드", PageRequest.of(0, 20));
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void 본문_크롤링_이미지는_원문에_실린_순서_그대로_저장되고_없으면_빈_리스트다() {
         Article withImages = articleRepository.save(new Article(
                 "Liverpool FC 공식", "https://example.com/with-body-images", "Liverpool unveil new kit",

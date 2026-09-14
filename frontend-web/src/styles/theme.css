@@ -503,9 +503,176 @@
 /* 좁은 화면(모바일): 탭/칩은 이미 flex-wrap이라 줄바꿈되고, 여기선 폭이 좁아지며
    깨지는 요소만 조정한다 — 검색줄의 입력/드롭다운/버튼 줄바꿈, 기사 카드 썸네일
    비율. 상세 페이지 이미지는 이미 width:100%라 별도 처리가 필요 없다. */
+/* 플로팅 채팅 위젯 */
+.rf-chat-button {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--rf-red);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.rf-chat-button:hover {
+  background: var(--rf-red-hover);
+}
+
+.rf-chat-panel {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  height: 480px;
+  max-height: calc(100vh - 140px);
+  background: var(--rf-bg-raised);
+  border: 1px solid var(--rf-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  animation: rf-in 0.2s ease both;
+}
+
+.rf-chat-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rf-border-soft);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  font-size: 14.5px;
+  flex-shrink: 0;
+}
+.rf-chat-close {
+  background: none;
+  border: none;
+  color: var(--rf-muted-2);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+}
+.rf-chat-close:hover {
+  color: var(--rf-text);
+}
+
+.rf-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rf-chat-empty {
+  color: var(--rf-muted-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rf-chat-bubble {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  max-width: 85%;
+  white-space: pre-wrap;
+}
+.rf-chat-bubble[data-role="user"] {
+  align-self: flex-end;
+  background: var(--rf-red);
+  color: #fff;
+}
+.rf-chat-bubble[data-role="assistant"] {
+  align-self: flex-start;
+  background: var(--rf-bg);
+  border: 1px solid var(--rf-border-soft);
+  color: var(--rf-text-dim);
+}
+.rf-chat-source-tag {
+  display: block;
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-family: var(--rf-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+}
+.rf-chat-source-tag[data-source="article"] {
+  background: rgba(45, 158, 138, 0.15);
+  color: #3fc4ac;
+}
+.rf-chat-source-tag[data-source="general"] {
+  background: rgba(148, 148, 148, 0.15);
+  color: #b0b0b0;
+}
+.rf-chat-bubble[data-role="error"] {
+  align-self: flex-start;
+  color: var(--rf-danger);
+  border: 1px solid #3a2020;
+  background: none;
+}
+
+.rf-chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--rf-border-soft);
+  flex-shrink: 0;
+}
+.rf-chat-input {
+  flex: 1;
+  background: var(--rf-bg);
+  border: 1px solid var(--rf-border);
+  border-radius: 2px;
+  color: var(--rf-text);
+  padding: 10px 12px;
+  font-size: 13.5px;
+}
+.rf-chat-send {
+  background: var(--rf-red);
+  border: none;
+  color: #fff;
+  border-radius: 2px;
+  padding: 0 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rf-chat-send:hover {
+  background: var(--rf-red-hover);
+}
+.rf-chat-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 @media (max-width: 600px) {
   .rf-app {
     padding: 0 14px 100px;
+  }
+  .rf-chat-panel {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    bottom: 84px;
+    height: calc(100vh - 150px);
+  }
+  .rf-chat-button {
+    right: 16px;
+    bottom: 16px;
   }
   .rf-search-row {
     flex-wrap: wrap;

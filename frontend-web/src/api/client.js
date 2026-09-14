@@ -18,7 +18,14 @@ export async function apiFetch(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, `요청에 실패했습니다: ${path} (${response.status})`);
+    let message = `요청에 실패했습니다: ${path} (${response.status})`;
+    try {
+      const body = await response.json();
+      if (body?.message) message = body.message;
+    } catch {
+      // 응답 본문이 JSON이 아니면(빈 본문 등) 기본 메시지를 그대로 쓴다.
+    }
+    throw new ApiError(response.status, message);
   }
 
   if (response.status === 204) {
