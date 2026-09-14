@@ -219,7 +219,7 @@ def test_run_translation_batch_respects_already_translated_today_count(
 @patch("translate.db")
 @patch("argos_engine.translate")
 def test_run_translation_batch_warns_when_carryover_exceeds_threshold(
-    mock_argos_translate, mock_db, capsys
+    mock_argos_translate, mock_db, caplog
 ):
     """이월 건수가 임계값을 넘으면 경고 로그를 남긴다."""
     mock_db.fetch_untranslated_articles.return_value = [
@@ -229,11 +229,10 @@ def test_run_translation_batch_warns_when_carryover_exceeds_threshold(
     mock_db.get_engine.return_value = "engine"
     mock_argos_translate.return_value = ("제목", "요약", "argos-translate-en-ko")
 
-    run_translation_batch()
+    with caplog.at_level("WARNING", logger="translate"):
+        run_translation_batch()
 
-    captured = capsys.readouterr()
-    assert "[WARNING]" in captured.out
-    assert "이월" in captured.out
+    assert any("이월" in record.message for record in caplog.records)
 
 
 @patch("translate.CARRYOVER_WARNING_THRESHOLD", 100)
@@ -241,14 +240,14 @@ def test_run_translation_batch_warns_when_carryover_exceeds_threshold(
 @patch("translate.db")
 @patch("argos_engine.translate")
 def test_run_translation_batch_does_not_warn_when_carryover_within_threshold(
-    mock_argos_translate, mock_db, capsys
+    mock_argos_translate, mock_db, caplog
 ):
     mock_db.fetch_untranslated_articles.return_value = [_article(1, "A", "B")]
     mock_db.count_translated_today.return_value = 0
     mock_db.get_engine.return_value = "engine"
     mock_argos_translate.return_value = ("제목", "요약", "argos-translate-en-ko")
 
-    run_translation_batch()
+    with caplog.at_level("WARNING", logger="translate"):
+        run_translation_batch()
 
-    captured = capsys.readouterr()
-    assert "[WARNING]" not in captured.out
+    assert not any(record.levelname == "WARNING" for record in caplog.records)

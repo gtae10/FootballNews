@@ -12,6 +12,8 @@ run_translation_batch()를 참고 — 한도를 넘긴 기사는 버려지지 �
 배치로 자연스럽게 이월된다.
 """
 
+import logging
+import logging.handlers
 import os
 from dataclasses import dataclass
 
@@ -21,6 +23,26 @@ from html_cleanup import clean_for_translation
 from postprocessing import clean_translation_output
 from preprocessing import remove_noise
 from priority import sort_by_priority
+
+# scheduler.py가 이 스크립트를 서브프로세스로 실행할 때도(콘솔 없음), 단독으로
+# `python translate.py`를 실행할 때도 동일하게 translator/logs/translate.log에
+# 파일 로그가 남도록 한다 (collector/scheduler.py와 같은 방식, 모듈 이름 충돌을
+# 피하려고 별도 로거로 둔다).
+_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger("translate")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    _file_handler = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(_LOG_DIR, "translate.log"), when="midnight", backupCount=30, encoding="utf-8"
+    )
+    _file_handler.setFormatter(_formatter)
+    _console_handler = logging.StreamHandler()
+    _console_handler.setFormatter(_formatter)
+    logger.addHandler(_file_handler)
+    logger.addHandler(_console_handler)
 
 # "argos"(기본, 오프라인/무료) | "anthropic"(Claude API, 유료) | "openai"(GPT API, 유료)
 ENGINE = os.environ.get("TRANSLATOR_ENGINE", "argos")
@@ -98,6 +120,7 @@ def run_translation_batch() -> int:
 
     반환값은 번역해 저장한 기사 수다(실패하거나 한도 초과로 이월된 기사는 포함하지 않는다).
     """
+    logger.info(f"번역 배치 시작 (엔진: {ENGINE})")
     engine = db.get_engine()
 
     articles = sort_by_priority(db.fetch_untranslated_articles(engine))
@@ -110,7 +133,7 @@ def run_translation_batch() -> int:
         try:
             result = translate_article(article.title_original, article.content_original)
         except Exception as exc:
-            print(
+            logger.error(
                 f"번역 실패 (기사 id={article.id}, 엔진={ENGINE}): {exc} "
                 "— status는 COLLECTED로 유지, 다음 배치에서 재시도됨"
             )
@@ -120,10 +143,10 @@ def run_translation_batch() -> int:
         translated_count += 1
 
     carried_over_count = len(articles) - translated_count
-    print(f"오늘 처리: {translated_count}건, 이월: {carried_over_count}건 (엔진: {ENGINE})")
+    logger.info(f"번역 배치 종료 — 오늘 처리: {translated_count}건, 이월: {carried_over_count}건 (엔진: {ENGINE})")
     if carried_over_count > CARRYOVER_WARNING_THRESHOLD:
-        print(
-            f"[WARNING] 이월 건수({carried_over_count}건)가 임계값"
+        logger.warning(
+            f"이월 건수({carried_over_count}건)가 임계값"
             f"({CARRYOVER_WARNING_THRESHOLD}건)을 초과했습니다 — "
             "DAILY_TRANSLATION_LIMIT 상향 검토 필요"
         )

@@ -30,6 +30,69 @@ translator는 별도 모듈이라(각자 `db.py`를 따로 관리, 둘 다 이�
 배치가 실패해도(네트워크 오류, `OPENAI_API_KEY` 누락 등) 수집 스케줄러 자체는
 멈추지 않고 다음 30분 주기에 재시도된다.
 
+### 로그 파일 위치 ("지금 잘 돌고 있나?" 확인용)
+
+| 파일 | 내용 |
+|---|---|
+| `collector/logs/scheduler.log` | 수집 시작/완료(조회·신규 저장 건수), 번역 배치 서브프로세스 시작/완료/실패, 예기치 못한 오류(traceback 포함) |
+| `translator/logs/translate.log` | 번역 배치 시작/종료(오늘 처리·이월 건수, 엔진), 기사별 번역 실패 사유, 이월 임계값 초과 경고 |
+
+날짜(자정, 로컬 시각)가 바뀌면 자동으로 새 파일로 회전하고 최근 30일치만 보관한다
+(`logging.handlers.TimedRotatingFileHandler`). 콘솔에도 동일하게 출력되므로 수동
+실행 시에는 기존처럼 화면에서도 바로 확인할 수 있다. 두 파일 모두 `.gitignore`에
+등록돼 있어 커밋되지 않는다.
+
+```bash
+# 최근 로그 확인 (PowerShell)
+Get-Content collector/logs/scheduler.log -Tail 30
+Get-Content translator/logs/translate.log -Tail 30
+```
+
+### Windows 작업 스케줄러 등록 (PC 재부팅/로그아웃과 무관하게 항상 실행)
+
+```powershell
+# 관리자 권한 PowerShell에서, collector 폴더 기준으로 실행
+./setup_scheduled_task.ps1
+```
+
+`LiverpoolNewsScheduler`라는 이름으로 작업을 등록한다(이미 있으면 지우고 다시
+등록하므로 재실행해도 안전하다).
+
+- **트리거**: PC 부팅 시(`AtStartup`)
+- **계정**: `SYSTEM` (로그아웃 상태에서도 계속 실행되도록 — 비밀번호 저장 불필요)
+- **실패 시 재시작**: 프로세스가 죽으면 5분 뒤 재시작, 최대 999회
+- **실행 시간 제한**: 없음(`scheduler.py`가 `BlockingScheduler`로 무한 실행되는 것이
+  정상 동작이므로 Task Scheduler가 임의로 종료하지 않도록 함)
+
+등록 후 확인:
+
+```powershell
+Get-ScheduledTask -TaskName "LiverpoolNewsScheduler" | Select-Object TaskName, State
+Start-ScheduledTask -TaskName "LiverpoolNewsScheduler"   # 수동 실행 테스트
+```
+
+`AtStartup` 트리거는 이벤트 기반이라 Task Scheduler가 "다음 실행 예정 시각"을
+따로 계산해 보여주지 않는다(시간 기반 트리거가 아니므로 정상). 실제로 잘
+등록됐는지는 위 `Get-ScheduledTask`로 `State`가 `Ready`(대기)/`Running`(실행 중)인지
+확인하거나, `Start-ScheduledTask`로 수동 트리거한 뒤 `collector/logs/scheduler.log`에
+새 로그가 찍히는지로 확인한다.
+
+**다른 PC/노트북으로 옮길 때**: 저장소를 클론/복사한 뒤 `collector` 폴더에서
+관리자 PowerShell로 `./setup_scheduled_task.ps1`을 한 번만 실행하면 된다. python
+경로는 스크립트가 그 PC의 PATH에서 자동으로 찾으므로 수정할 필요가 없다. 이 PC와
+마찬가지로 `.env`(또는 `translator/.env`)에 DB 접속 정보/`OPENAI_API_KEY` 등을
+먼저 설정해둬야 한다.
+
+작업은 `SYSTEM` 계정으로 등록된다 — 이 PC에서는 python이 사용자별 설치
+(`AppData\Local\Programs\Python`)인데도 `SYSTEM` 권한으로 문제없이 읽고 실행됨을
+실전 트리거로 확인했다(2026-09-14). 다른 PC에서 권한이 더 엄격하게 걸려 있어
+`SYSTEM`으로 실행이 안 된다면(`Start-ScheduledTask` 후 `State`가 `Running`으로
+안 바뀌거나 로그가 안 쌓이는 경우), `setup_scheduled_task.ps1`의
+`New-ScheduledTaskPrincipal -UserId "SYSTEM"`을 실제 로그인 계정으로 바꾸고
+`-Trigger`에 `New-ScheduledTaskTrigger -AtLogOn`을 추가하는 식으로 조정한다(이
+경우 로그아웃하면 멈추는 대신, 별도 비밀번호 저장 없이 등록할 수 있다는
+트레이드오프가 있다).
+
 ### 백필 실행 (과거 기사 수집 — 필요할 때만 수동 실행)
 
 ```bash
@@ -160,7 +223,11 @@ robots.txt가 링크하는 라이선스 계약이 검색 인덱싱 외 목적의
   인용을 감지하고, 감지되면 `source_tier`를 더 신뢰도 높은 값으로만 갱신하는 로직.
 - `crawler.py`: RSS가 없는 사이트를 위한 크롤링 로직 (현재 등록된 소스는 모두 RSS
   페이지네이션으로 과거 기사까지 수집 가능하므로 실제 사용되지는 않는다)
-- `scheduler.py`: 주기적 실행 스케줄러 (30분 간격, 최신 페이지만 조회)
+- `scheduler.py`: 주기적 실행 스케줄러 (30분 간격, 최신 페이지만 조회). 로그는
+  `logs/scheduler.log`에 남는다(위 "로그 파일 위치" 참고)
+- `setup_scheduled_task.ps1`: `scheduler.py`를 Windows 작업 스케줄러에 등록하는
+  스크립트 (PC 부팅 시 자동 시작 + 실패 시 재시작, 위 "Windows 작업 스케줄러 등록"
+  참고)
 - `backfill.py`: 과거 기사 백필 1회성 스크립트 (소스당 여러 페이지 순회, 요청 간 지연 포함)
 - `body_image_extractor.py`: 기사 원문 페이지를 요청해(`fetch_article_html`) HTML을
   가져오고, 본문 영역(`<article>` 등) 안의 이미지 URL을 추가로 추출하는 로직

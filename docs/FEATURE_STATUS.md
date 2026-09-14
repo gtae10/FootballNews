@@ -131,9 +131,25 @@
 
 - 코드: `collector/scheduler.py`의 `run_collection_and_translation_job()`이 `run_collection_job()`(RSS 수집) 직후 `run_translation_job()`을 이어서 실행하도록 변경(30분 간격 스케줄에 그대로 적용됨, 시작 시 1회 즉시 실행도 포함). collector와 translator는 별도 모듈이라(각자 `db.py`를 따로 관리, 이름이 같아 같은 프로세스로 import하면 충돌) 같은 프로세스로 합치지 않고 `subprocess.run(["python", "translate.py"], cwd=translator/)`로 분리 실행
 - 번역 엔진: `TRANSLATOR_ENGINE` 환경 변수를 따르며 지정 없으면 `openai` 기본값(이 환경엔 Argos 오프라인 모델 미설치 — 11번 참고). 실패해도(네트워크 오류, API 키 누락 등) 예외를 던지지 않아 수집 스케줄러 자체는 멈추지 않고 다음 30분 주기에 재시도됨
-- Windows 작업 스케줄러/cron 등록은 여전히 없음 — `python scheduler.py`를 직접 실행 중인 동안에만 동작한다(그 프로세스가 살아있는 동안 30분 간격 반복). 서버 재부팅 시 자동 시작되지 않으므로, 정말 상시 자동화하려면 별도로 Windows 작업 스케줄러/서비스 등록이 필요함(아직 안 함)
+- ~~Windows 작업 스케줄러/cron 등록은 여전히 없음~~ → **21번에서 해결됨**(2026-09-14, PC 재부팅/로그아웃과 무관하게 SYSTEM 계정으로 상시 실행되도록 등록)
 - 테스트: `collector/tests/test_scheduler.py`에 `run_translation_job`/`run_collection_and_translation_job` 관련 5개 추가(서브프로세스 호출은 mock 처리, 실제 실행은 안 함) — 전부 통과
-- 확인일: 2026-09-11
+- 확인일: 2026-09-11 (Task Scheduler 등록은 2026-09-14, 21번 참고)
+
+### 21. Windows 작업 스케줄러 등록 + 파일 로그 (scheduler.py 상시 백그라운드 실행)
+
+**✅ 완료** (커밋 미반영 — 다음 커밋에서 해시 채움, 2026-09-14)
+
+- 배경: 12번에서 `scheduler.py`의 수집+번역 연동 자체는 됐지만, 터미널을 직접 켜두고 있어야만 동작했다 — PC를 재부팅하거나 로그아웃하면 멈춤. 또한 `print()`만 쓰고 있어 콘솔이 없는 백그라운드 실행에서는 "잘 돌고 있는지" 확인할 방법이 없었음
+- 코드:
+  - `collector/scheduler.py`, `translator/translate.py`: `print()` → Python `logging` 모듈로 전환. 둘 다 `logging.handlers.TimedRotatingFileHandler`(자정 회전, 최근 30일 보관) + `StreamHandler`(콘솔, 수동 실행 시 기존과 동일하게 화면에서도 확인 가능)를 사용. "수집 시작/완료(조회·신규 저장 건수)", "번역 배치 시작/종료(처리·이월 건수, 엔진)", 기사별 번역 실패 사유, 예기치 못한 예외(`run_collection_and_translation_job`에 try/except + `logger.exception()` 추가 — APScheduler는 잡 내부 예외를 우리 로그 파일에 남기지 않으므로 안전망으로 추가)가 모두 로그에 남음
+  - `collector/setup_scheduled_task.ps1`(신규): `LiverpoolNewsScheduler`라는 이름으로 Task Scheduler에 등록하는 PowerShell 스크립트. 트리거는 `AtStartup`(PC 부팅 시), 계정은 `SYSTEM`(`LogonType ServiceAccount` — 로그아웃 상태에서도 실행되도록, 비밀번호 저장 불필요), 실패 시 5분 뒤 재시작(최대 999회), 실행 시간 제한 없음(`scheduler.py`가 `BlockingScheduler`로 무한 실행되는 게 정상 동작이라 Task Scheduler가 임의 종료하면 안 됨). 이미 등록돼 있으면 지우고 다시 등록해 여러 번 실행해도 안전함(idempotent)
+  - `.gitignore`: `collector/logs/`, `translator/logs/` 추가(로그 파일은 커밋하지 않음)
+- 등록 확인(2026-09-14, 관리자 PowerShell에서 `setup_scheduled_task.ps1` 실행): `Get-ScheduledTask`로 작업이 실제로 등록됨을 확인(`State: Ready`, `Principal: SYSTEM/ServiceAccount/Highest`, `RestartCount: 999`, `RestartInterval: PT5M`, `ExecutionTimeLimit: PT0S`, `Action: python.exe scheduler.py`). `AtStartup` 트리거는 이벤트 기반이라 `NextRunTime`이 따로 계산되지 않음(시간 기반 트리거가 아니므로 정상 — 이 점을 확인해서 README에도 명시함). `Start-ScheduledTask`로 수동 트리거 → `State: Running`, 실제 `python.exe` 프로세스(PID) 기동, `scheduler.log`에 새 로그 기록까지 확인
+- 실전 배치 실행 결과(2026-09-14, 위 수동 트리거로 실행된 실제 배치): 수집 232건 조회·54건 신규 저장 → 번역 배치가 기존 미번역분(COLLECTED 132건, 20번 항목 시점) + 신규 54건 = **186건을 전부 처리, 이월 0건**(엔진: openai). 실행 전후 DB 직접 대조: `status='COLLECTED'` **132건 → 0건**, `translations` 완료 **1311건 → 1497건**(전체 기사 1497건과 정확히 일치, 번역 커버리지 100%)
+- 문서 갱신: `collector/README.md`(로그 파일 위치 표, Task Scheduler 등록 방법과 확인 절차, 다른 PC로 옮길 때 재등록 방법), `translator/README.md`(로그 파일 위치 짧게 언급 + collector/README.md로 링크)
+- 테스트: 기존 `collector/tests/test_scheduler.py`(7개)와 `translator/tests/test_translate.py`의 이월 경고 테스트 2개가 `print`/`capsys` 대신 로거/`caplog`를 검증하도록 수정(로깅 전환에 맞춰 갱신, 새 기능 자체가 아니라 기존 테스트를 새 구현에 맞게 고친 것) — collector 186개, translator 78개 전부 통과
+- 알아둘 점: 이 PC의 python은 사용자별 설치(`AppData\Local\Programs\Python\Python311`)라 SYSTEM 계정에서도 파일 자체는 읽히지만, 다른 PC에서 python이 시스템 전체 설치가 아니라 특정 사용자 전용으로 깔려 있고 권한이 더 엄격하다면 SYSTEM 계정 실행이 막힐 수 있음 — 그 경우 `setup_scheduled_task.ps1`의 `-UserId "SYSTEM"`을 실제 로그인 계정으로 바꾸고 로그온 트리거를 추가하는 방식으로 조정 필요(README에 이 트레이드오프 명시)
+- 확인일: 2026-09-14
 
 ### 13. collector 소스 목록 (RSS)
 

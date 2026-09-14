@@ -28,6 +28,11 @@ collector와 동일한 `articles`/`translations` 테이블 스키마를 사용�
 `TRANSLATOR_DB_URL`을 자동으로 읽어들여 별도 `export` 없이 `python translate.py`만
 실행해도 값이 적용된다. `.env`가 없으면 에러 없이 위 기본 접속 정보로 동작한다.
 
+번역 배치 시작/종료(처리·이월 건수, 엔진), 기사별 번역 실패 사유는 콘솔과
+`translator/logs/translate.log`에 함께 남는다(자정마다 회전, 최근 30일 보관) —
+`collector/scheduler.py`가 서브프로세스로 실행할 때도 동일하게 기록된다. 실행
+현황 확인은 `collector/README.md`의 "로그 파일 위치" 절 참고.
+
 ## 동작 방식
 
 1. `db.fetch_untranslated_articles()`로 `articles.status = 'COLLECTED'`인 기사를

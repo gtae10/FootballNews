@@ -9,6 +9,10 @@ __pycache__/
 .venv/
 venv/
 
+# 스케줄러/번역 배치 로그 (docs/collector/README.md 참고)
+collector/logs/
+translator/logs/
+
 # Node
 frontend-web/node_modules/
 frontend-web/dist/

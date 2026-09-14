@@ -1,5 +1,7 @@
 """주기적으로 뉴스 수집 + 번역을 실행하는 스케줄러."""
 
+import logging
+import logging.handlers
 import os
 import subprocess
 
@@ -15,8 +17,28 @@ from sources import RSS_SOURCES, CRAWL_SOURCES
 # (translate.py의 `if __name__ == "__main__":`이 run_translation_batch()를 그대로 호출함).
 _TRANSLATOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "translator")
 
+# Task Scheduler로 백그라운드 실행하면 콘솔이 없어 stdout만으로는 "잘 돌고 있는지"
+# 확인할 방법이 없다. collector/logs/scheduler.log에 자정마다 회전 저장(최근 30일치
+# 보관)하고, 콘솔에도 그대로 출력한다(수동 실행 시 기존과 동일하게 눈으로 확인 가능).
+_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger("scheduler")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    _file_handler = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(_LOG_DIR, "scheduler.log"), when="midnight", backupCount=30, encoding="utf-8"
+    )
+    _file_handler.setFormatter(_formatter)
+    _console_handler = logging.StreamHandler()
+    _console_handler.setFormatter(_formatter)
+    logger.addHandler(_file_handler)
+    logger.addHandler(_console_handler)
+
 
 def run_collection_job():
+    logger.info("수집 시작")
     all_articles = []
 
     for source in RSS_SOURCES:
@@ -32,12 +54,12 @@ def run_collection_job():
     # 크롤링 대상이 추가되면 crawler.crawl_article_list/crawl_article_detail을
     # 사용해 같은 방식으로 all_articles에 합류시킨다.
     if CRAWL_SOURCES:
-        print(f"CRAWL_SOURCES 처리 로직이 아직 없습니다: {len(CRAWL_SOURCES)}개 소스 건너뜀")
+        logger.info(f"CRAWL_SOURCES 처리 로직이 아직 없습니다: {len(CRAWL_SOURCES)}개 소스 건너뜀")
 
     engine = db.get_engine()
     saved_count = db.save_articles(engine, all_articles)
 
-    print(f"수집된 기사 수: {len(all_articles)}, 신규 저장: {saved_count}")
+    logger.info(f"수집 완료: 조회 {len(all_articles)}건, 신규 저장 {saved_count}건")
     return all_articles
 
 
@@ -53,6 +75,7 @@ def run_translation_job():
     """
     env = {**os.environ, "TRANSLATOR_ENGINE": os.environ.get("TRANSLATOR_ENGINE", "openai")}
 
+    logger.info("번역 배치 시작")
     result = subprocess.run(
         ["python", "translate.py"],
         cwd=_TRANSLATOR_DIR,
@@ -67,21 +90,33 @@ def run_translation_job():
     )
 
     if result.stdout:
-        print(result.stdout.strip())
+        logger.info(result.stdout.strip())
     if result.returncode != 0:
-        print(f"번역 배치 실행 실패(exit code {result.returncode}): {result.stderr.strip()}")
+        logger.error(f"번역 배치 실행 실패(exit code {result.returncode}): {result.stderr.strip()}")
+    else:
+        logger.info("번역 배치 완료")
 
 
 def run_collection_and_translation_job():
-    """수집 직후 바로 번역까지 이어서 실행한다 (30분 주기, scheduler.py의 기본 잡)."""
-    run_collection_job()
-    run_translation_job()
+    """수집 직후 바로 번역까지 이어서 실행한다 (30분 주기, scheduler.py의 기본 잡).
+
+    APScheduler는 잡 안에서 발생한 예외를 스케줄러 자체 로거로만 남기고 우리
+    scheduler.log에는 남기지 않는다 — "에러가 있었다면 무엇인지"가 로그에 남아야
+    하므로 여기서 직접 잡아 logger.exception()으로 기록하고, 다음 30분 주기가
+    이어서 돌 수 있게 삼킨다(수집/번역 각자 내부에서도 이미 실패를 흡수하지만,
+    예상 못 한 예외에 대한 마지막 안전망이다).
+    """
+    try:
+        run_collection_job()
+        run_translation_job()
+    except Exception:
+        logger.exception("수집+번역 배치 중 예기치 못한 오류 발생")
 
 
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(run_collection_and_translation_job, "interval", minutes=30)
 
-    print("수집+번역 스케줄러 시작 (30분 간격)")
+    logger.info("수집+번역 스케줄러 시작 (30분 간격)")
     run_collection_and_translation_job()  # 시작 시 1회 즉시 실행
     scheduler.start()
